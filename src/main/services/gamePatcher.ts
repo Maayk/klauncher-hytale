@@ -469,6 +469,12 @@ export class GamePatcher {
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
     await this.extractArchive(archivePath, tempDir);
 
+    // If we downloaded this file specifically for this install (isRemote), delete it to save space
+    if ((archiveSource as any).isRemote) {
+      logger.info('Removing cached archive after extraction', { archivePath });
+      await fs.rm(archivePath, { force: true }).catch(() => { });
+    }
+
     const sourceDir = await this.resolveExtractedGameRoot(tempDir);
     if (!sourceDir) {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
@@ -478,8 +484,6 @@ export class GamePatcher {
     await fs.mkdir(gameDir, { recursive: true });
 
     // Clear existing directory to avoid conflicts
-    // We should probably NOT nuke the whole gameDir if it's the root game dir, but here gameDir IS the versioned dir (e.g. .../latest).
-    // So clearing it is correct for a fresh install/reinstall from local archive.
     await fs.rm(gameDir, { recursive: true, force: true }).catch(() => { });
     await fs.mkdir(gameDir, { recursive: true });
 

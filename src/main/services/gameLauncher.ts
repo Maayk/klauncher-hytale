@@ -4,12 +4,10 @@ import { spawn, ChildProcess } from 'child_process';
 import * as crypto from 'crypto';
 import { app, BrowserWindow } from 'electron';
 import logger from '../../shared/utils/logger';
-import { CONFIG } from '../../shared/constants/config';
 import { javaManager, JavaProgress } from './javaManager';
 import { GamePatcher } from './gamePatcher';
 import { serverPatcher } from './serverPatcher';
 import { configManager } from './configManager';
-import { SettingsV2 } from '../../shared/schemas/config';
 import { DownloadService } from './downloadService';
 
 import { ZeroToOneInstaller } from './zeroToOneInstaller';
@@ -185,10 +183,11 @@ class GameLauncher {
       onStatus?: StatusCallback;
       onError?: ErrorCallback;
       onSuccess?: SuccessCallback;
+      onStopped?: () => void;
     }
   ): Promise<void> {
     const { username, gameChannel, useCustomJava, customJavaPath, hideLauncher } = options;
-    const { onProgress, onStatus, onError, onSuccess } = callbacks;
+    const { onProgress, onStatus, onError, onSuccess, onStopped } = callbacks;
 
     logger.info('Launch game requested', { username, gameChannel });
 
@@ -378,6 +377,8 @@ class GameLauncher {
           onSuccess?.('Jogo terminado');
         }
 
+        // Always call onStopped when process exits
+        onStopped?.();
         this.gameProcess = null;
       });
 
@@ -412,6 +413,34 @@ class GameLauncher {
 
   isGameRunning(): boolean {
     return this.gameProcess !== null && !this.gameProcess.killed;
+  }
+
+  async forceKillGame(): Promise<void> {
+    // 1. Kill internal process reference if exists
+    await this.killGame();
+
+    // 2. Force kill any system process named HytaleClient.exe
+    return new Promise((resolve) => {
+      logger.info('Attempting to force kill Hytale processes...');
+      const cmd = process.platform === 'win32'
+        ? 'taskkill /F /IM HytaleClient.exe /T'
+        : 'pkill -f HytaleClient'; // fallback for unix-like
+
+      import('child_process').then(({ exec }) => {
+        exec(cmd, (err, stdout, stderr) => {
+          if (err) {
+            if (stderr.includes('not found') || stdout.includes('not found') || err.message.includes('not found')) {
+              logger.info('No external Hytale process found to kill.');
+            } else {
+              logger.warn('Error during force kill', { error: err.message });
+            }
+          } else {
+            logger.info('Force kill command executed', { stdout });
+          }
+          resolve();
+        });
+      });
+    });
   }
 }
 

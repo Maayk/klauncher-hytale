@@ -1,5 +1,4 @@
 import React from 'react';
-import { motion } from 'framer-motion';
 import { Switch } from '@/renderer/components/ui/switch';
 import { Trash2, AlertCircle } from 'lucide-react';
 import { type InstalledMod } from '@/shared/types/mods';

@@ -94,7 +94,7 @@ export const useModsStore = create<ModsStore>()(
             setError(result.error || 'Erro ao buscar mods');
             setStatus('error');
           }
-        } catch (error) {
+        } catch (_error) {
           setError('Erro ao conectar com o serviço de mods');
           setStatus('error');
         }
@@ -115,7 +115,7 @@ export const useModsStore = create<ModsStore>()(
             setError(result.error || 'Erro ao buscar mods instalados');
             setStatus('error');
           }
-        } catch (error) {
+        } catch (_error) {
           setError('Erro ao conectar com o serviço de mods');
           setStatus('error');
         }
@@ -136,7 +136,7 @@ export const useModsStore = create<ModsStore>()(
           } else {
             setError(result.error || 'Erro ao instalar mod');
           }
-        } catch (error) {
+        } catch (_error) {
           setError('Erro ao conectar com o serviço de mods');
         } finally {
           set((state) => {
@@ -157,7 +157,7 @@ export const useModsStore = create<ModsStore>()(
           } else {
             setError(result.error || 'Erro ao alternar mod');
           }
-        } catch (error) {
+        } catch (_error) {
           setError('Erro ao conectar com o serviço de mods');
         } finally {
           set((state) => {
@@ -178,7 +178,7 @@ export const useModsStore = create<ModsStore>()(
           } else {
             setError(result.error || 'Erro ao deletar mod');
           }
-        } catch (error) {
+        } catch (_error) {
           setError('Erro ao conectar com o serviço de mods');
         } finally {
           set((state) => {

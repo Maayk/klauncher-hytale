@@ -1,4 +1,3 @@
-import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Header } from '@/renderer/components/Layout/Header';
 import { Hero } from '@/renderer/components/Home/Hero';
@@ -7,6 +6,7 @@ import { ActionFooter } from '@/renderer/components/Home/ActionFooter';
 import { ModsPage } from '@/renderer/pages/ModsPage';
 import { SettingsPage } from '@/renderer/pages/SettingsPage';
 import { useNavigationStore } from '@/renderer/store/useNavigationStore';
+import { GameStatusListener } from '@/renderer/components/logic/GameStatusListener';
 
 const backgroundImage = new URL('../assets/image/background.png', import.meta.url).href;
 
@@ -28,6 +28,7 @@ function App() {
 
             {/* Main Content Grid */}
             <div className="relative z-10 flex flex-col h-full max-h-full overflow-hidden">
+                <GameStatusListener />
                 {/* Top Bar (Header + Controls) */}
                 <Header />
 

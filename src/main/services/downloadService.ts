@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import type { FileHash } from '../../shared/schemas/patcher';
 import { CacheManager } from './cacheManager';
 import { DownloadManager, type DownloadProgress, type DownloadResult } from './downloadManager';
-import { computeHashes, verifyFile } from '../../shared/utils/crypto';
+import { computeHashes } from '../../shared/utils/crypto';
 import logger from '../../shared/utils/logger';
 
 export interface FileDownloadTask {

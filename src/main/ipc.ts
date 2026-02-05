@@ -5,15 +5,10 @@ import { promisify } from 'util';
 import logger from '../shared/utils/logger';
 import { IPC_CHANNELS } from '../shared/constants/channels';
 import { gameLauncher, LaunchOptions, LaunchProgress } from './services/gameLauncher';
-import { GamePatcher } from './services/gamePatcher';
 import { VersionChecker } from './services/versionChecker';
 import { configManager } from './services/configManager';
 import { javaManager } from './services/javaManager';
 import { SettingsV2 } from '../shared/schemas/config';
-import { DownloadService } from './services/downloadService';
-import { CacheManager } from './services/cacheManager';
-import { BandwidthManager } from './services/bandwidthManager';
-import { DownloadManager } from './services/downloadManager';
 import { checkForUpdates, getRemoteConfig, getHytaleConfig } from './services/updaterService';
 import { pathManager } from './services/pathManager';
 
@@ -29,25 +24,12 @@ interface GpuInfo {
 }
 
 // Lazy initialization variables
-let downloadService: DownloadService;
-let gamePatcher: GamePatcher;
 const versionChecker = new VersionChecker();
 
 export function setupIpcHandlers(): void {
   logger.info('Setting up IPC handlers');
 
   // Initialize services lazily to ensure paths are correct
-  downloadService = new DownloadService({
-    cacheDir: path.join(app.getPath('userData'), 'cache'),
-    tempDir: path.join(app.getPath('userData'), 'temp'),
-    maxCacheSizeMB: 1024,
-    cacheMaxAgeDays: 7,
-    maxConcurrentDownloads: 3,
-    maxBandwidthBytesPerSecond: 0,
-    retryCount: 3,
-  });
-
-  gamePatcher = new GamePatcher(downloadService);
 
   ipcMain.handle(IPC_CHANNELS.GAME.LAUNCH, async (event, gameChannel?: string, overrideUsername?: string) => {
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -82,6 +64,9 @@ export function setupIpcHandlers(): void {
         },
         onSuccess: (message: string) => {
           event.sender.send(IPC_CHANNELS.GAME.SUCCESS, message);
+        },
+        onStopped: () => {
+          event.sender.send(IPC_CHANNELS.GAME.STOPPED);
         },
       });
     } catch (error) {
@@ -130,14 +115,44 @@ export function setupIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.GAME.REPAIR, async (event, channel: 'latest' | 'beta' = 'latest') => {
     try {
-      const gameDir = pathManager.getGameDir(channel);
+      const fs = await import('fs-extra');
 
-      const patchProgressHandler = (stage: string, progress: number, message: string) => {
-        event.sender.send(IPC_CHANNELS.GAME.PATCH_PROGRESS, { stage, progress, message });
-      };
+      await configManager.initialize();
+      const settings = configManager.getSettings();
+      const targetChannel = channel || settings.gameChannel || 'latest';
 
-      await gamePatcher.patchGame(gameDir, channel, patchProgressHandler);
-      logger.info('Game repair completed', { channel });
+      const gameDir = pathManager.getGameDir(targetChannel);
+
+      logger.info('Starting game repair', { targetChannel, gameDir });
+
+      // 0. Ensure game is not running
+      if (gameLauncher.isGameRunning()) {
+        logger.info('Game is running, attempting to kill before repair...');
+        await gameLauncher.killGame();
+        // Give it a moment to release file handles
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // 1. Force cleanup of the directory with Retry logic for Windows EBUSY
+      const maxRetries = 3;
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          if (await fs.pathExists(gameDir)) {
+            logger.info(`Deleting existing game directory (Attempt ${i + 1}/${maxRetries})...`, { gameDir });
+            await fs.remove(gameDir);
+          }
+          break; // Success
+        } catch (err: any) {
+          if (i === maxRetries - 1) throw err; // Re-throw on last failure
+
+          logger.warn(`Failed to delete directory (Attempt ${i + 1}), retrying in 1s...`, { error: err.message });
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      // 2. We do NOT re-create or patch. Just return success.
+      // The user will click "Play", which will detect missing files and reinstall.
+      logger.info('Game directory deleted. Repair (reset) successful.', { targetChannel });
       return { success: true };
     } catch (error) {
       const message = `Repair failed: ${error instanceof Error ? error.message : String(error)}`;

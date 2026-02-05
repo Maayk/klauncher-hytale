@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
 import { IPC_CHANNELS } from '@/shared/constants/channels';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useGameStore } from '@/renderer/store/useGameStore';
 
 interface Version {
     id: string;
@@ -16,7 +17,11 @@ export function VersionSelector() {
     const [selectedId, setSelectedId] = useState<string>('latest');
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    const { status } = useGameStore();
+    const isBusy = status === 'launching' || status === 'running';
+
     useEffect(() => {
+        // ... (data fetching)
         const fetchData = async () => {
             try {
                 let versionsData: Version[] = [];
@@ -73,8 +78,12 @@ export function VersionSelector() {
     return (
         <div className="relative" ref={dropdownRef}>
             <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-4 rounded-lg bg-black/50 px-4 py-2.5 backdrop-blur-xl border border-white/10 hover:bg-black/70 hover:border-white/20 transition-all duration-200 group min-w-[140px]"
+                onClick={() => !isBusy && setIsOpen(!isOpen)}
+                disabled={isBusy}
+                className={cn(
+                    "flex items-center gap-4 rounded-lg bg-black/50 px-4 py-2.5 backdrop-blur-xl border border-white/10 transition-all duration-200 group min-w-[140px]",
+                    isBusy ? "opacity-50 cursor-not-allowed" : "hover:bg-black/70 hover:border-white/20"
+                )}
             >
                 <div className="flex flex-col items-start mr-auto">
                     <span className="text-[8px] font-bold tracking-[0.15em] text-white/40 uppercase mb-0.5 group-hover:text-white/60 transition-colors">

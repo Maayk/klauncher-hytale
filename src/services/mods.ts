@@ -130,8 +130,6 @@ export async function listInstalledMods(): Promise<{ success: boolean; data?: an
       .filter(file => /\.(jar|zip)(\.disabled)?$/.test(file))
       .map(file => {
         const isEnabled = !file.endsWith('.disabled');
-        // Handle both simple .disabled and .jar.disabled if that case occurs, but usually it's .jar.disabled or .jar
-        // My toggle logic below does fileName + .disabled.
 
         const manifestData = manifest[file];
 

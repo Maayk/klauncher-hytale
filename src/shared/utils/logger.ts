@@ -12,7 +12,7 @@ function createLogger(): winston.Logger {
     winston.format.json()
   ];
 
-  return winston.createLogger({
+  const logger = winston.createLogger({
     level: logLevel,
     format: winston.format.combine(...formats),
     defaultMeta: { service: 'kyamtale' },

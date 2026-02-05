@@ -1,5 +1,4 @@
-import type { Settings, GameVersion } from '../schemas/config';
-import type { DownloadProgress, GameLaunchParams } from '../schemas/patcher';
+import type { DownloadProgress } from '../schemas/patcher';
 
 export interface GameProgressData {
   channel: 'latest' | 'beta';

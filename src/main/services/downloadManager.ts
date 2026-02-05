@@ -1,11 +1,8 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import { createWriteStream } from 'node:fs';
 import { existsSync } from 'node:fs';
-import http from 'node:http';
 import https from 'node:https';
 import axios from 'axios';
-import { URL } from 'node:url';
 import type { FileHash } from '../../shared/schemas/patcher';
 import { computeHashes } from '../../shared/utils/crypto';
 import { BandwidthManager } from './bandwidthManager';
@@ -58,7 +55,7 @@ export class DownloadManager {
   }
 
   async download(options: DownloadOptions, onProgress?: (progress: DownloadProgress) => void): Promise<DownloadResult> {
-    const { url, destPath, expectedHash, retryCount = 3, resume = true } = options;
+    const { url, destPath, expectedHash, retryCount = 3 } = options;
     const startTime = Date.now();
     const abortController = new AbortController();
 
@@ -140,125 +137,127 @@ export class DownloadManager {
 
     const bandwidthManager = this.bandwidthManager;
 
-    return new Promise(async (resolve, reject) => {
-      const headers: Record<string, string> = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://hytale.com/',
-        'Origin': 'https://hytale.com',
-        'Connection': 'keep-alive'
-      };
+    return new Promise((resolve, reject) => {
+      (async () => {
+        const headers: Record<string, string> = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://hytale.com/',
+          'Origin': 'https://hytale.com',
+          'Connection': 'keep-alive'
+        };
 
-      if (downloaded > 0) {
-        headers['Range'] = `bytes=${downloaded}-`;
-      }
-
-      try {
-        const response = await axios({
-          url,
-          method: 'GET',
-          responseType: 'stream',
-          headers,
-          httpAgent: this.agent,
-          httpsAgent: this.agent,
-          signal: signal,
-          validateStatus: (status) => {
-            return (status >= 200 && status < 300) || status === 416;
-          }
-        });
-
-        if (response.status === 416) {
-          logger.warn('Range request not supported or invalid, restarting', { url });
-          await fs.unlink(tempPath).catch(() => { });
-          downloaded = 0;
-          // Recursive retry without resume
-          const result = await this.performDownload({ ...options, resume: false }, signal, onProgress);
-          resolve(result);
-          return;
+        if (downloaded > 0) {
+          headers['Range'] = `bytes=${downloaded}-`;
         }
-
-        const contentLength = response.headers['content-length'];
-        total = downloaded + parseInt(contentLength || '0', 10);
-
-        const fileStream = createWriteStream(tempPath, { flags: downloaded > 0 ? 'a' : 'w' });
-        const stream = response.data;
-
-        let lastEmitTime = Date.now();
-        const emitInterval = 100;
 
         try {
-          for await (const chunk of stream) {
-            if (signal.aborted) {
-              throw new Error('Download aborted');
+          const response = await axios({
+            url,
+            method: 'GET',
+            responseType: 'stream',
+            headers,
+            httpAgent: this.agent,
+            httpsAgent: this.agent,
+            signal: signal,
+            validateStatus: (status) => {
+              return (status >= 200 && status < 300) || status === 416;
             }
+          });
 
-            await bandwidthManager.acquire(chunk.length);
-
-            if (!fileStream.write(chunk)) {
-              await new Promise<void>((resolve) => fileStream.once('drain', () => resolve()));
-            }
-
-            downloaded += chunk.length;
-
-            const now = Date.now();
-            if (now - lastEmitTime >= emitInterval) {
-              const elapsed = (now - startTime) / 1000;
-              const speed = downloaded / elapsed;
-              const eta = speed > 0 ? (total - downloaded) / speed : 0;
-              const percent = total > 0 ? (downloaded / total) * 100 : 0;
-
-              lastEmitTime = now;
-              onProgress?.({
-                url: options.url,
-                destPath,
-                downloaded,
-                total,
-                percent,
-                speed,
-                eta
-              });
-            }
+          if (response.status === 416) {
+            logger.warn('Range request not supported or invalid, restarting', { url });
+            await fs.unlink(tempPath).catch(() => { });
+            downloaded = 0;
+            // Recursive retry without resume
+            const result = await this.performDownload({ ...options, resume: false }, signal, onProgress);
+            resolve(result);
+            return;
           }
-        } catch (err) {
-          fileStream.destroy();
-          throw err;
+
+          const contentLength = response.headers['content-length'];
+          total = downloaded + parseInt(contentLength || '0', 10);
+
+          const fileStream = createWriteStream(tempPath, { flags: downloaded > 0 ? 'a' : 'w' });
+          const stream = response.data;
+
+          let lastEmitTime = Date.now();
+          const emitInterval = 100;
+
+          try {
+            for await (const chunk of stream) {
+              if (signal.aborted) {
+                throw new Error('Download aborted');
+              }
+
+              await bandwidthManager.acquire(chunk.length);
+
+              if (!fileStream.write(chunk)) {
+                await new Promise<void>((resolve) => fileStream.once('drain', () => resolve()));
+              }
+
+              downloaded += chunk.length;
+
+              const now = Date.now();
+              if (now - lastEmitTime >= emitInterval) {
+                const elapsed = (now - startTime) / 1000;
+                const speed = downloaded / elapsed;
+                const eta = speed > 0 ? (total - downloaded) / speed : 0;
+                const percent = total > 0 ? (downloaded / total) * 100 : 0;
+
+                lastEmitTime = now;
+                onProgress?.({
+                  url: options.url,
+                  destPath,
+                  downloaded,
+                  total,
+                  percent,
+                  speed,
+                  eta
+                });
+              }
+            }
+          } catch (err) {
+            fileStream.destroy();
+            throw err;
+          }
+
+          fileStream.end();
+
+          await new Promise<void>((resolve, reject) => {
+            fileStream.on('finish', () => resolve());
+            fileStream.on('error', reject);
+          });
+
+          if (total > 0 && downloaded < total) {
+            throw new Error(`Incomplete download: ${downloaded}/${total}`);
+          }
+
+          await fs.rename(tempPath, destPath);
+          const stat = await fs.stat(destPath);
+          resolve({
+            success: true,
+            path: destPath,
+            size: stat.size,
+            duration: Date.now() - startTime,
+            fromCache: false
+          });
+
+        } catch (error: any) {
+          // Handle Request Errors
+          console.error('[DownloadManager] Axios Error:', {
+            message: error.message,
+            status: error.response?.status,
+            headers: error.response?.headers,
+            url: options.url
+          });
+
+          if (axios.isCancel(error)) {
+            reject(new Error('Download aborted'));
+          } else {
+            reject(error);
+          }
         }
-
-        fileStream.end();
-
-        await new Promise<void>((resolve, reject) => {
-          fileStream.on('finish', () => resolve());
-          fileStream.on('error', reject);
-        });
-
-        if (total > 0 && downloaded < total) {
-          throw new Error(`Incomplete download: ${downloaded}/${total}`);
-        }
-
-        await fs.rename(tempPath, destPath);
-        const stat = await fs.stat(destPath);
-        resolve({
-          success: true,
-          path: destPath,
-          size: stat.size,
-          duration: Date.now() - startTime,
-          fromCache: false
-        });
-
-      } catch (error: any) {
-        // Handle Request Errors
-        console.error('[DownloadManager] Axios Error:', {
-          message: error.message,
-          status: error.response?.status,
-          headers: error.response?.headers,
-          url: options.url
-        });
-
-        if (axios.isCancel(error)) {
-          reject(new Error('Download aborted'));
-        } else {
-          reject(error);
-        }
-      }
+      })();
     });
   }
 

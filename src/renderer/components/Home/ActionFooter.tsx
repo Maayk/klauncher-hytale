@@ -1,29 +1,22 @@
 import React from 'react';
 import { Button } from '@/renderer/components/ui/button';
 import { VersionSelector } from './VersionSelector';
-import { ChevronDown, Play, Check } from 'lucide-react';
-import { cn } from '@/shared/utils/cn';
+import { Play } from 'lucide-react';
 import { IPC_CHANNELS } from '@/shared/constants/channels';
 import type { Settings } from '@/shared/schemas/config';
+import { useGameStore } from '@/renderer/store/useGameStore';
 
 type Channel = 'current' | 'legacy';
 
-interface ChannelOption {
-    value: Channel;
-    label: string;
-    description: string;
-}
-
-const CHANNEL_OPTIONS: ChannelOption[] = [
-    { value: 'current', label: 'Current', description: 'Latest Beta Build' },
-    { value: 'legacy', label: 'Legacy', description: 'Stable Release' }
-];
-
 export function ActionFooter() {
-    const [isLaunching, setIsLaunching] = React.useState(false);
     const [settings, setSettings] = React.useState<Settings | null>(null);
-    const [launchStatus, setLaunchStatus] = React.useState('');
-    const [launchProgress, setLaunchProgress] = React.useState(0);
+    const { status, progress, message, setStatus } = useGameStore();
+
+    // We derive isLaunching from the global store status
+    const isLaunching = status === 'launching';
+    // Use the global message if launching, otherwise default
+    const displayStatus = isLaunching ? message : '';
+    const displayProgress = isLaunching ? progress : 0;
 
     React.useEffect(() => {
         const loadSettings = async () => {
@@ -39,7 +32,7 @@ export function ActionFooter() {
 
     const handleLaunch = async () => {
         if (isLaunching) return;
-        setIsLaunching(true);
+        setStatus('launching');
 
         try {
             // Fetch fresh settings to get the latest nickname
@@ -51,55 +44,9 @@ export function ActionFooter() {
             await window.electronAPI.invoke(IPC_CHANNELS.GAME.LAUNCH, channel, playerName);
         } catch (error) {
             console.error('Failed to launch game:', error);
-        } finally {
-            setIsLaunching(false);
+            setStatus('error'); // Store listener might also catch this
         }
     };
-
-    // Listen for game progress updates
-    React.useEffect(() => {
-        const handleProgress = (_event: unknown, progress: any) => {
-            console.log('Game progress:', progress);
-            if (progress.message) setLaunchStatus(progress.message);
-            if (typeof progress.progress === 'number') setLaunchProgress(progress.progress);
-        };
-
-        const handlePatchProgress = (_event: unknown, progress: any) => {
-            console.log('Patch progress:', progress);
-            // Patch progress structure might be different, adapt as needed
-            // Usually patch progress has stage, message, progress
-        };
-
-        const handleGameStarted = () => {
-            setIsLaunching(false);
-            console.log('Game started');
-        };
-
-        const handleGameStopped = () => {
-            setIsLaunching(false);
-            console.log('Game stopped');
-        };
-
-        const handleError = (_event: unknown, ...args: unknown[]) => {
-            const error = args[0] as string;
-            console.error('Game error:', error);
-            setIsLaunching(false);
-        };
-
-        const unsubscribeProgress = window.electronAPI.on(IPC_CHANNELS.GAME.PROGRESS, handleProgress);
-        const unsubscribePatchProgress = window.electronAPI.on(IPC_CHANNELS.GAME.PATCH_PROGRESS, handlePatchProgress);
-        const unsubscribeGameStarted = window.electronAPI.on(IPC_CHANNELS.GAME.STARTED, handleGameStarted);
-        const unsubscribeGameStopped = window.electronAPI.on(IPC_CHANNELS.GAME.STOPPED, handleGameStopped);
-        const unsubscribeError = window.electronAPI.on(IPC_CHANNELS.GAME.ERROR, handleError);
-
-        return () => {
-            unsubscribeProgress();
-            unsubscribePatchProgress();
-            unsubscribeGameStarted();
-            unsubscribeGameStopped();
-            unsubscribeError();
-        };
-    }, []);
 
     return (
         <div className="flex flex-col items-end gap-3 shrink-0">
@@ -117,9 +64,9 @@ export function ActionFooter() {
             >
                 {isLaunching ? (
                     <div className="flex flex-col items-center justify-center w-full">
-                        <span className="text-[10px] font-bold tracking-wider mb-1 animate-pulse uppercase">{launchStatus || 'LAUNCHING...'}</span>
+                        <span className="text-[10px] font-bold tracking-wider mb-1 animate-pulse uppercase">{displayStatus || 'LAUNCHING...'}</span>
                         <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
-                            <div className="h-full bg-cyan-500 transition-all duration-300 ease-out" style={{ width: `${launchProgress}%` }} />
+                            <div className="h-full bg-cyan-500 transition-all duration-300 ease-out" style={{ width: `${displayProgress}%` }} />
                         </div>
                     </div>
                 ) : (

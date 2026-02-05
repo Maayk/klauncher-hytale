@@ -1,35 +1,40 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, User, FolderOpen, Monitor, Cpu, HardDrive, Languages, Bell } from 'lucide-react';
+import { ArrowLeft, FolderOpen, Monitor, Cpu, HardDrive, Languages } from 'lucide-react';
 import { Button } from '@/renderer/components/ui/button';
 import { SettingCard } from '@/renderer/components/Settings/SettingCard';
 import { SettingToggle } from '@/renderer/components/Settings/SettingToggle';
 import { SettingSelect, type SelectOption } from '@/renderer/components/Settings/SettingSelect';
 import { SettingInput } from '@/renderer/components/Settings/SettingInput';
+import { cn } from '@/shared/utils/cn';
 import { IPC_CHANNELS } from '@/shared/constants/channels';
 
+import { useGameStore } from '@/renderer/store/useGameStore';
+
 export function SettingsPage({ onBack }: { onBack: () => void }) {
+    // State
     const [hideLauncher, setHideLauncher] = React.useState(false);
     const [customJava, setCustomJava] = React.useState(false);
-    const [notifications, setNotifications] = React.useState(true);
+    const [isRepairing, setIsRepairing] = React.useState(false);
+    const [confirmingRepair, setConfirmingRepair] = React.useState(false);
 
-    const [playerName, setPlayerName] = React.useState('');
     const [javaPath, setJavaPath] = React.useState('');
-
-    const [gameChannel, setGameChannel] = React.useState('current');
     const [language, setLanguage] = React.useState('pt-BR');
+    const [gameChannel, setGameChannel] = React.useState('latest');
 
-    const [gpuPreference, setGpuPreference] = React.useState('auto');
+    const { status } = useGameStore();
 
+    // Initial Load
     React.useEffect(() => {
         const loadSettings = async () => {
             try {
                 const settings = await window.electronAPI.invoke(IPC_CHANNELS.SETTINGS.GET) as any;
                 if (settings) {
-                    setPlayerName(settings.playerName || '');
                     setHideLauncher(settings.hideLauncher || false);
-                    setGameChannel(settings.gameChannel === 'beta' ? 'legacy' : 'current');
+                    setCustomJava(settings.useCustomJava || false);
+                    setJavaPath(settings.customJavaPath || '');
                     setLanguage(settings.language || 'pt-BR');
+                    setGameChannel(settings.gameChannel || 'latest');
                 }
             } catch (error) {
                 console.error('Failed to load settings:', error);
@@ -38,41 +43,74 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
         loadSettings();
     }, []);
 
-    const handlePlayerNameChange = async (value: string) => {
-        setPlayerName(value);
+    // Persistence Helper
+    const updateSetting = async (key: string, value: any) => {
         try {
-            await window.electronAPI.invoke(IPC_CHANNELS.SETTINGS.SET, { playerName: value });
+            await window.electronAPI.invoke(IPC_CHANNELS.SETTINGS.SET, { [key]: value });
         } catch (error) {
-            console.error('Failed to save player name:', error);
+            console.error(`Failed to save setting ${key}:`, error);
         }
     };
 
-    const gameChannelOptions: SelectOption[] = [
-        { value: 'current', label: 'Atual', description: 'Última versão beta' },
-        { value: 'legacy', label: 'Legado', description: 'Versão estável' }
-    ];
+    // Handlers
+    const handleHideLauncherChange = (checked: boolean) => {
+        setHideLauncher(checked);
+        updateSetting('hideLauncher', checked);
+    };
 
-    const languageOptions: SelectOption[] = [
-        { value: 'pt-BR', label: '🇧🇷 Português (BR)' },
-        { value: 'en-US', label: '🇺🇸 English (US)' },
-        { value: 'es-ES', label: '🇪🇸 Español' },
-        { value: 'fr-FR', label: '🇫🇷 Français' },
-        { value: 'de-DE', label: '🇩🇪 Deutsch' }
-    ];
+    const handleCustomJavaChange = (checked: boolean) => {
+        setCustomJava(checked);
+        updateSetting('useCustomJava', checked);
+    };
 
-    const gpuOptions: SelectOption[] = [
-        { value: 'auto', label: 'Automático', description: 'Sistema escolhe a melhor GPU' },
-        { value: 'dedicated', label: 'Dedicada', description: 'Força GPU dedicada' },
-        { value: 'integrated', label: 'Integrada', description: 'Força GPU integrada' }
-    ];
+    const handleLanguageChange = (value: string) => {
+        setLanguage(value);
+        updateSetting('language', value);
+    };
+
+    const handleSelectJavaPath = async () => {
+        try {
+            const result = await window.electronAPI.invoke(IPC_CHANNELS.JAVA.SELECT_PATH) as { success: boolean; path?: string };
+            if (result.success && result.path) {
+                setJavaPath(result.path);
+            }
+        } catch (error) {
+            console.error('Failed to select Java path:', error);
+        }
+    };
 
     const handleOpenGameFolder = () => {
         window.electronAPI.invoke(IPC_CHANNELS.GAME.OPEN_LOCATION);
     };
 
-    const handleRepairGame = () => {
-        window.electronAPI.invoke(IPC_CHANNELS.GAME.REPAIR);
+    const handleRepairGame = async () => {
+        if (!confirmingRepair) {
+            setConfirmingRepair(true);
+            setTimeout(() => setConfirmingRepair(false), 3000);
+            return;
+        }
+
+        setIsRepairing(true);
+        setConfirmingRepair(false);
+        try {
+            await window.electronAPI.invoke(IPC_CHANNELS.GAME.REPAIR, gameChannel);
+        } catch (error) {
+            console.error("Repair failed", error);
+        } finally {
+            setIsRepairing(false);
+        }
     };
+
+    // Listeners for progress would go here if needed...
+    React.useEffect(() => {
+    }, []);
+
+    // Options
+    const languageOptions: SelectOption[] = [
+        { value: 'pt-BR', label: '🇧🇷 Português (BR)' },
+        { value: 'en-US', label: '🇺🇸 English (US)' },
+        { value: 'es-ES', label: '🇪🇸 Español' },
+    ];
 
     return (
         <motion.div
@@ -87,7 +125,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                     variant="ghost"
                     size="icon"
                     onClick={onBack}
-                    className="settings-page__back flex-shrink-0"
+                    className="settings-page__back shrink-0"
                     title="Voltar"
                 >
                     <ArrowLeft size={18} />
@@ -101,49 +139,15 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
             </div>
 
             <div className="settings-page__content flex-1 min-h-0 overflow-y-auto pr-2 launcher-scrollbar flex flex-col gap-6 pb-8">
-                
-                <section className="settings-section">
-                    <h2 className="text-xs font-bold tracking-[0.15em] text-white/40 uppercase mb-3 px-1">
-                        Perfil
-                    </h2>
-                    <div className="settings-section__cards flex flex-col gap-2">
-                        <SettingCard
-                            title="Nome do Jogador"
-                            description="Este nome será usado no jogo"
-                            icon={<User size={18} className="text-cyan-400" />}
-                            action={
-                                <SettingInput
-                                    size="sm"
-                                    value={playerName}
-                                    onChange={(e) => handlePlayerNameChange(e.target.value)}
-                                    placeholder="Seu nome"
-                                    className="w-40"
-                                />
-                            }
-                        />
-                    </div>
-                </section>
 
+                {/* PERFIL */}
+
+                {/* JOGO */}
                 <section className="settings-section">
                     <h2 className="text-xs font-bold tracking-[0.15em] text-white/40 uppercase mb-3 px-1">
                         Jogo
                     </h2>
                     <div className="settings-section__cards flex flex-col gap-2">
-                        <SettingCard
-                            title="Canal do Jogo"
-                            description="Selecionar versão instalada"
-                            icon={<HardDrive size={18} className="text-amber-400" />}
-                            action={
-                                <SettingSelect
-                                    size="sm"
-                                    options={gameChannelOptions}
-                                    value={gameChannel}
-                                    onChange={setGameChannel}
-                                    className="w-40"
-                                />
-                            }
-                        />
-
                         <SettingCard
                             title="Pasta do Jogo"
                             description="Abrir pasta de instalação"
@@ -162,42 +166,44 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
 
                         <SettingCard
                             title="Reparar Jogo"
-                            description="Reinstalar arquivos do jogo"
+                            description={`Reinstalar a versão: ${gameChannel}`}
                             icon={<HardDrive size={18} className="text-red-400" />}
                             action={
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     onClick={handleRepairGame}
-                                    className="h-8 px-3 gap-2"
+                                    disabled={isRepairing || status === 'launching' || status === 'running'}
+                                    className={cn(
+                                        "h-8 px-3 gap-2 transition-all duration-200",
+                                        confirmingRepair
+                                            ? "bg-red-500/10 text-red-400 border-red-500/50 hover:bg-red-500/20"
+                                            : "hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/50",
+                                        (isRepairing || status === 'launching' || status === 'running') && "opacity-50 cursor-not-allowed"
+                                    )}
                                 >
-                                    Reparar
+                                    {isRepairing
+                                        ? 'Reparando...'
+                                        : status === 'launching'
+                                            ? 'Baixando...'
+                                            : status === 'running'
+                                                ? 'Em Execução'
+                                                : confirmingRepair
+                                                    ? 'Confirmar?'
+                                                    : 'Reparar'
+                                    }
                                 </Button>
                             }
                         />
                     </div>
                 </section>
 
+                {/* PERFORMANCE (Simplificado) */}
                 <section className="settings-section">
                     <h2 className="text-xs font-bold tracking-[0.15em] text-white/40 uppercase mb-3 px-1">
-                        Performance
+                        Comportamento
                     </h2>
                     <div className="settings-section__cards flex flex-col gap-2">
-                        <SettingCard
-                            title="Preferência de GPU"
-                            description="Selecionar placa de vídeo para renderização"
-                            icon={<Monitor size={18} className="text-purple-400" />}
-                            action={
-                                <SettingSelect
-                                    size="sm"
-                                    options={gpuOptions}
-                                    value={gpuPreference}
-                                    onChange={setGpuPreference}
-                                    className="w-40"
-                                />
-                            }
-                        />
-
                         <SettingCard
                             title="Ocultar Launcher ao jogar"
                             description="Minimiza o launcher enquanto o jogo está rodando"
@@ -206,13 +212,14 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                                 <SettingToggle
                                     size="md"
                                     checked={hideLauncher}
-                                    onChange={setHideLauncher}
+                                    onChange={handleHideLauncherChange}
                                 />
                             }
                         />
                     </div>
                 </section>
 
+                {/* JAVA */}
                 <section className="settings-section">
                     <h2 className="text-xs font-bold tracking-[0.15em] text-white/40 uppercase mb-3 px-1">
                         Java
@@ -226,7 +233,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                                 <SettingToggle
                                     size="md"
                                     checked={customJava}
-                                    onChange={setCustomJava}
+                                    onChange={handleCustomJavaChange}
                                 />
                             }
                         />
@@ -235,19 +242,20 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                             <SettingCard
                                 title="Caminho do Executável Java"
                                 description="Localização do java.exe"
-                                icon={<Cpu size={18} className="text-orange-400" />}
+                                icon={<Cpu size={18} className="text-orange-400/50" />}
                                 action={
                                     <div className="flex items-center gap-2">
                                         <SettingInput
                                             size="sm"
                                             value={javaPath}
-                                            onChange={(e) => setJavaPath(e.target.value)}
-                                            placeholder="C:\\Program Files\\Java\\..."
-                                            className="w-64"
+                                            readOnly
+                                            placeholder="Nenhum selecionado"
+                                            className="w-64 cursor-default bg-white/5"
                                         />
                                         <Button
                                             variant="outline"
                                             size="sm"
+                                            onClick={handleSelectJavaPath}
                                             className="h-8 px-3"
                                         >
                                             Procurar
@@ -259,6 +267,7 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                     </div>
                 </section>
 
+                {/* INTERFACE */}
                 <section className="settings-section">
                     <h2 className="text-xs font-bold tracking-[0.15em] text-white/40 uppercase mb-3 px-1">
                         Interface
@@ -273,21 +282,8 @@ export function SettingsPage({ onBack }: { onBack: () => void }) {
                                     size="sm"
                                     options={languageOptions}
                                     value={language}
-                                    onChange={setLanguage}
+                                    onChange={handleLanguageChange}
                                     className="w-40"
-                                />
-                            }
-                        />
-
-                        <SettingCard
-                            title="Notificações"
-                            description="Receber alertas sobre atualizações e eventos"
-                            icon={<Bell size={18} className="text-pink-400" />}
-                            action={
-                                <SettingToggle
-                                    size="md"
-                                    checked={notifications}
-                                    onChange={setNotifications}
                                 />
                             }
                         />

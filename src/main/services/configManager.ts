@@ -4,14 +4,12 @@ import { app } from 'electron';
 import logger from '../../shared/utils/logger';
 import {
   Settings,
-  SettingsSchemaV1,
   SettingsSchemaV2,
   DEFAULT_SETTINGS,
   GameVersion,
   GAME_VERSION_SCHEMA
 } from '../../shared/schemas/config';
 import { MIGRATION_REGISTRY, LATEST_VERSION } from '../../shared/schemas/migrations';
-import { z } from 'zod';
 
 class ConfigManager {
   private settings: Settings = DEFAULT_SETTINGS;
@@ -151,9 +149,6 @@ class ConfigManager {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EPERM') {
         logger.warn('Permission denied saving game version file, version will not persist to disk', { error });
-        // If we failed to save but validated correctly (which we must have if we reached writeFile or failed before but validated is undefined?)
-        // Actually if parse throws, we go to catch. valdiated is undefined.
-        // If writeFile throws, validated is defined.
         if (validated!) {
           this.gameVersion = validated;
         }

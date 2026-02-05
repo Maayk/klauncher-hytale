@@ -19,14 +19,12 @@ export async function fetchHytaleNews(): Promise<NewsItem[]> {
             timeout: 8000
         });
 
-        // Handle different response structures
         const items = Array.isArray(response.data)
             ? response.data
             : (response.data.articles || response.data.news || []);
 
         const newsArray = Array.isArray(items) ? items : [];
 
-        // Map and sanitize response, limit to 6 items
         return newsArray.slice(0, 6).map((item: any, index: number) => ({
             id: item.id?.toString() || `news-${index}`,
             title: item.title || 'Untitled',

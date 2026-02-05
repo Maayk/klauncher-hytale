@@ -3,8 +3,6 @@ import * as path from 'path';
 import { app } from 'electron';
 import * as os from 'os';
 import StreamZip from 'adm-zip';
-import logger from '../../shared/utils/logger';
-import { CONFIG } from '../../shared/constants/config';
 import { pathManager } from './pathManager';
 
 export interface JavaConfig {
@@ -175,7 +173,7 @@ export class JavaManager {
     const downloadPath = path.join(tempDir, fileName);
 
     try {
-      await this.downloadWithProgress(downloadUrl, downloadPath, onProgress || (() => {}));
+      await this.downloadWithProgress(downloadUrl, downloadPath, onProgress || (() => { }));
 
       onProgress?.({
         status: 'extracting',
@@ -187,7 +185,7 @@ export class JavaManager {
       await fs.mkdir(jreDir, { recursive: true });
 
       if (fileName.endsWith('.zip')) {
-        await this.extractZip(downloadPath, jreDir, onProgress || (() => {}));
+        await this.extractZip(downloadPath, jreDir, onProgress || (() => { }));
       } else {
         throw new Error('Unsupported JRE file format (only zip implemented)');
       }

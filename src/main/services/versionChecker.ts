@@ -2,9 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { app } from 'electron';
-import { configManager } from './configManager';
 import logger from '../../shared/utils/logger';
-import { CONFIG } from '../../shared/constants/config';
 import { z } from 'zod';
 
 interface ConfigVersionInfo {

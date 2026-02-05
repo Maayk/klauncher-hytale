@@ -78,8 +78,7 @@ export class ButlerManager {
 
   async applyPatch(
     gameDir: string,
-    patchUrl: string,
-    onProgress?: ProgressCallback
+    patchUrl: string
   ): Promise<void> {
     await this.ensureButlerInstalled();
 
@@ -111,7 +110,7 @@ export class ButlerManager {
       await this.runButlerCommand(['apply', patchFile, gameDir], gameDir);
       logger.info('Butler patch applied');
     } finally {
-      await fs.rm(patchDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(patchDir, { recursive: true, force: true }).catch(() => { });
     }
   }
 
@@ -121,7 +120,7 @@ export class ButlerManager {
 
       const { stdout } = await this.runButlerCommand(['dl', 'list', '--json'], gameDir);
       const data = JSON.parse(stdout);
-      
+
       return data.caves?.some((cave: any) => cave.game?.id === channel);
     } catch {
       return false;
@@ -144,7 +143,7 @@ export class ButlerManager {
       } else {
         const destDir = path.dirname(destPath);
         await fs.mkdir(destDir, { recursive: true });
-        
+
         const content = entry.getData();
         await fs.writeFile(destPath, content);
       }
@@ -164,8 +163,7 @@ export class ButlerManager {
 
   async downloadChannel(
     channel: string,
-    gameDir: string,
-    onProgress?: ProgressCallback
+    gameDir: string
   ): Promise<void> {
     await this.ensureButlerInstalled();
 

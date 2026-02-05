@@ -1,4 +1,3 @@
-import { app } from 'electron';
 import path from 'path';
 import fs from 'fs-extra';
 import logger from '../../shared/utils/logger';

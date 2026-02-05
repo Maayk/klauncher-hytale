@@ -100,18 +100,18 @@ class ServerPatcher {
           totalReplacements++;
         }
       } else if (type === 'smart_domain') {
-        const oldBytesStub = encoding === 'utf16' 
-          ? this.encodeUtf16(oldVal.slice(0, -1)) 
+        const oldBytesStub = encoding === 'utf16'
+          ? this.encodeUtf16(oldVal.slice(0, -1))
           : this.stringToUtf8(oldVal.slice(0, -1));
-        const newBytesStub = encoding === 'utf16' 
-          ? this.encodeUtf16(newVal.slice(0, -1)) 
+        const newBytesStub = encoding === 'utf16'
+          ? this.encodeUtf16(newVal.slice(0, -1))
           : this.stringToUtf8(newVal.slice(0, -1));
 
-        const oldEndByte = encoding === 'utf16' 
-          ? oldVal.charCodeAt(oldVal.length - 1) 
+        const oldEndByte = encoding === 'utf16'
+          ? oldVal.charCodeAt(oldVal.length - 1)
           : oldVal.charCodeAt(oldVal.length - 1);
-        const newEndByte = encoding === 'utf16' 
-          ? newVal.charCodeAt(newVal.length - 1) 
+        const newEndByte = encoding === 'utf16'
+          ? newVal.charCodeAt(newVal.length - 1)
           : newVal.charCodeAt(newVal.length - 1);
 
         const matches = this.getPatternIndices(modifiedBuffer, oldBytesStub);
@@ -150,7 +150,7 @@ class ServerPatcher {
     try {
       const flagData = await fs.readFile(flagFile, 'utf-8');
       const flag = JSON.parse(flagData);
-      
+
       return (
         flag.targetDomain === this.TARGET_DOMAIN &&
         (await fs.access(serverPath).then(() => true).catch(() => false))
@@ -184,7 +184,7 @@ class ServerPatcher {
       onProgress?.('Parcheando servidor (Rápido)...');
 
       const backupPath = serverPath + '.bak';
-      
+
       if (await fs.access(backupPath).then(() => true).catch(() => false)) {
         logger.info('Restoring from backup to ensure clean state');
         await fs.copyFile(backupPath, serverPath);
@@ -296,16 +296,16 @@ class ServerPatcher {
       return {
         success: true,
         patchedCount: totalCount,
-        message: totalCount > 0 
+        message: totalCount > 0
           ? `Servidor patcheado com sucesso (${totalCount} substituições em ${processedFiles} arquivos)`
           : 'Nenhuma substituição necessária',
       };
-    } catch (error) {
-      logger.error('Server patching failed', { error });
+    } catch (_error) {
+      logger.error('Server patching failed', { error: _error });
       return {
         success: false,
         patchedCount: 0,
-        message: `Falha ao patchear servidor: ${error instanceof Error ? error.message : String(error)}`,
+        message: `Falha ao patchear servidor: ${_error instanceof Error ? _error.message : String(_error)}`,
       };
     }
   }

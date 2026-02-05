@@ -1,7 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import logger from '../../shared/utils/logger';
-import { pathManager } from './pathManager';
 import * as fs from 'fs/promises';
 
 interface LauncherConfig {

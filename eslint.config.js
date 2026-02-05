@@ -32,6 +32,7 @@ const config = [
             '@typescript-eslint/no-unused-vars': 'off',
             'react/react-in-jsx-scope': 'off',
             'react-refresh/only-export-components': 'off',
+            'react/prop-types': 'off',
             'react-hooks/exhaustive-deps': 'off'
         },
         settings: {
