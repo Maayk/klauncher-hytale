@@ -19,7 +19,6 @@ export function VersionSelector() {
     useEffect(() => {
         const fetchData = async () => {
             try {
-                // Fetch versions separately to ensure UI always loads options even if settings fail
                 let versionsData: Version[] = [];
                 try {
                     versionsData = await window.electronAPI.invoke(IPC_CHANNELS.GAME.GET_VERSIONS) as Version[];

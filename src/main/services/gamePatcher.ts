@@ -278,9 +278,6 @@ export class GamePatcher {
       } else if (path.isAbsolute(configUrl)) {
         candidate = configUrl;
       } else {
-        // Resolve relative paths relative to the CONFIG FILE location, or AppPath?
-        // Usually relative to where the config is.
-        // If foundConfigPath is defined, we should resolve relative to its directory.
         if (foundConfigPath) {
           candidate = path.join(path.dirname(foundConfigPath), configUrl);
         } else {
@@ -320,7 +317,6 @@ export class GamePatcher {
     await fs.mkdir(destDir, { recursive: true });
 
     if (ext === '.zip') {
-      // Use node-stream-zip for memory-efficient extraction (avoids Array Buffer Allocation Failed)
       const zip = new StreamZip.async({ file: archivePath });
       try {
         await zip.extract(null, destDir);
@@ -442,7 +438,6 @@ export class GamePatcher {
       }
       archivePath = path.join(cacheDir, fileName);
 
-      // Clean up previous attempts
       await fs.rm(archivePath, { force: true }).catch(() => { });
       await fs.rm(archivePath + '.tmp', { force: true }).catch(() => { });
 

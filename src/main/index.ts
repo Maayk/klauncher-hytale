@@ -13,8 +13,6 @@ const distPath = path.join(__dirname, '..');
 process.env.DIST = distPath;
 process.env.PUBLIC = app.isPackaged ? distPath : path.join(distPath, '../public');
 
-// FORCE UNIFICATION: Set UserData to %APPDATA%/Kyamtale
-// This prevents Electron from creating a separate 'kyam-launcher' folder
 const appDataPath = app.getPath('appData');
 app.setPath('userData', path.join(appDataPath, 'Kyamtale'));
 

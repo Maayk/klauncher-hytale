@@ -14,11 +14,6 @@ import { DownloadService } from './downloadService';
 
 import { ZeroToOneInstaller } from './zeroToOneInstaller';
 
-// Top-level instantiation removed to allow lazy path resolution
-// const downloadService = new DownloadService({...});
-// const gamePatcher = new GamePatcher(downloadService);
-// const zeroToOneInstaller = new ZeroToOneInstaller(downloadService);
-
 export interface AuthTokens {
   identityToken: string;
   sessionToken: string;

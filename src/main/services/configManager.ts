@@ -13,11 +13,6 @@ import {
 import { MIGRATION_REGISTRY, LATEST_VERSION } from '../../shared/schemas/migrations';
 import { z } from 'zod';
 
-// Removed top-level constants to ensure app.getPath('userData') is called after app.setPath
-// const CONFIG_DIR = app.getPath('userData');
-// const CONFIG_FILE = path.join(CONFIG_DIR, 'user-settings.json');
-// const GAME_VERSION_FILE = path.join(CONFIG_DIR, 'gameVersion.json');
-
 class ConfigManager {
   private settings: Settings = DEFAULT_SETTINGS;
   private gameVersion: GameVersion | null = null;

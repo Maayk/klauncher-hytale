@@ -5,11 +5,9 @@ import { CONFIG } from '../../shared/constants/config';
 import logger from '../../shared/utils/logger';
 
 export class PathManager {
-  // Removed private property to avoid early initialization
-  // private hytaleRoot: string;
 
   constructor() {
-    // Lazy initialization - do nothing here
+
   }
 
   getHytaleRoot(): string {
@@ -208,7 +206,6 @@ export class PathManager {
       }
     }
 
-    // Always ensure at least 'latest' exists if nothing found
     if (versions.length === 0) {
       logger.warn('No versions found in config, defaulting to latest');
       versions.push({ id: 'latest', label: 'Latest', version: 'Unknown' });
