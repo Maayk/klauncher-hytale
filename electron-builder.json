@@ -1,0 +1,44 @@
+{
+    "appId": "com.kyamtale.launcher",
+    "productName": "KyamTale Launcher",
+    "directories": {
+        "output": "release/${version}-build"
+    },
+    "files": [
+        "dist/**/*",
+        "dist-electron/**/*",
+        "package.json"
+    ],
+    "mac": {
+        "target": [
+            "dmg",
+            "zip"
+        ]
+    },
+    "win": {
+        "target": [
+            {
+                "target": "nsis",
+                "arch": [
+                    "x64"
+                ]
+            }
+        ],
+        "icon": "src/assets/image/logo.png",
+        "signAndEditExecutable": false,
+        "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+        "oneClick": false,
+        "perMachine": false,
+        "allowToChangeInstallationDirectory": true,
+        "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+        "target": [
+            "AppImage",
+            "deb"
+        ],
+        "category": "Game"
+    }
+}

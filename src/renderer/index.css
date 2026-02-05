@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+:root {
+    --color-primary: 0 102 204;
+    --color-primary-dark: 0 68 153;
+    --color-primary-light: 230 240 255;
+    --color-bg-base: 15 15 15;
+}
+
+@layer utilities {
+    .draggable {
+        -webkit-app-region: drag;
+    }
+
+    .non-draggable {
+        -webkit-app-region: no-drag;
+    }
+}
+
+@layer components {
+    .launcher-scrollbar::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+
+    .launcher-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .launcher-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 2px;
+        transition: background 0.15s ease;
+    }
+
+    .launcher-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.25);
+    }
+
+    .launcher-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+    }
+
+    .launcher-scrollbar:hover {
+        scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+    }
+}
