@@ -3,7 +3,7 @@ import { cn } from '@/shared/utils/cn';
 import React from 'react';
 
 const toggleVariants = cva(
-    'relative inline-flex items-center h-5 rounded-full transition-all duration-200 cursor-pointer select-none',
+    'relative inline-flex items-center h-5 rounded-full transition-all duration-200 cursor-pointer select-none border',
     {
         variants: {
             size: {
@@ -58,8 +58,8 @@ export const SettingToggle = React.forwardRef<HTMLButtonElement, SettingTogglePr
                 className={cn(
                     toggleVariants({ size }),
                     checked
-                        ? 'bg-white/20 hover:bg-white/30'
-                        : 'bg-white/5 hover:bg-white/10',
+                        ? 'bg-cyan-500/20 border-cyan-500/30 hover:bg-cyan-500/30'
+                        : 'bg-black/40 border-white/10 hover:bg-black/60',
                     disabled && 'opacity-40 cursor-not-allowed',
                     className
                 )}

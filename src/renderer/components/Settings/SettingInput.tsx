@@ -30,7 +30,7 @@ export const SettingInput = React.forwardRef<HTMLInputElement, SettingInputProps
                 disabled={disabled}
                 className={cn(
                     inputVariants({ size }),
-                    'bg-black/50 border-white/5 text-white/95 placeholder:text-white/20 focus:border-white/15 focus:bg-black/60 focus:outline-none',
+                    'bg-black/40 border-white/10 text-white placeholder:text-white/20 focus:border-white/30 focus:bg-black/60 focus:outline-none',
                     disabled && 'opacity-40 cursor-not-allowed',
                     className
                 )}

@@ -14,18 +14,10 @@ import { DownloadService } from './downloadService';
 
 import { ZeroToOneInstaller } from './zeroToOneInstaller';
 
-const downloadService = new DownloadService({
-  cacheDir: path.join(app.getPath('userData'), 'cache'),
-  tempDir: path.join(app.getPath('userData'), 'temp'),
-  maxCacheSizeMB: 1024,
-  cacheMaxAgeDays: 7,
-  maxConcurrentDownloads: 3,
-  maxBandwidthBytesPerSecond: 0,
-  retryCount: 3,
-});
-
-const gamePatcher = new GamePatcher(downloadService);
-const zeroToOneInstaller = new ZeroToOneInstaller(downloadService);
+// Top-level instantiation removed to allow lazy path resolution
+// const downloadService = new DownloadService({...});
+// const gamePatcher = new GamePatcher(downloadService);
+// const zeroToOneInstaller = new ZeroToOneInstaller(downloadService);
 
 export interface AuthTokens {
   identityToken: string;
@@ -40,7 +32,7 @@ export interface LaunchProgress {
 
 export interface LaunchOptions {
   username: string;
-  gameChannel?: 'latest' | 'beta';
+  gameChannel?: string;
   useCustomJava?: boolean;
   customJavaPath?: string;
   hideLauncher?: boolean;
@@ -57,11 +49,30 @@ class GameLauncher {
   private readonly AUTH_SERVER_URL = 'https://sessions.sanasol.ws';
   private gameProcess: ChildProcess | null = null;
 
-  private normalizeGameChannel(value: string): 'latest' | 'beta' {
-    return value === 'beta' ? 'beta' : 'latest';
+  private downloadService: DownloadService | null = null;
+  private gamePatcher: GamePatcher | null = null;
+  private zeroToOneInstaller: ZeroToOneInstaller | null = null;
+
+  private ensureServices(): void {
+    if (this.downloadService && this.gamePatcher && this.zeroToOneInstaller) return;
+
+    this.downloadService = new DownloadService({
+      cacheDir: path.join(app.getPath('userData'), 'cache'),
+      tempDir: path.join(app.getPath('userData'), 'temp'),
+      maxCacheSizeMB: 1024,
+      cacheMaxAgeDays: 7,
+      maxConcurrentDownloads: 3,
+      maxBandwidthBytesPerSecond: 0,
+      retryCount: 3,
+    });
+
+    this.gamePatcher = new GamePatcher(this.downloadService);
+    this.zeroToOneInstaller = new ZeroToOneInstaller(this.downloadService);
   }
 
-  private buildGameDir(rootPath: string, channel: 'latest' | 'beta'): string {
+
+
+  private buildGameDir(rootPath: string, channel: string): string {
     return path.join(rootPath, ...this.GAME_PATH_PARTS, channel);
   }
 
@@ -186,10 +197,15 @@ class GameLauncher {
 
     logger.info('Launch game requested', { username, gameChannel });
 
-    const hytaleRoot = path.join(app.getPath('appData'), 'Kyamtale');
+    this.ensureServices();
+    const gamePatcher = this.gamePatcher!;
+    const zeroToOneInstaller = this.zeroToOneInstaller!;
+
+    const hytaleRoot = app.getPath('userData');
     const settings = await configManager.getSettings();
 
-    const channel = this.normalizeGameChannel(gameChannel || settings.gameChannel);
+    // Use channel directly (dynamic versioning)
+    const channel = gameChannel || settings.gameChannel || 'latest';
     const gameDir = this.buildGameDir(hytaleRoot, channel);
     const executablePath = path.join(gameDir, 'Client', 'HytaleClient.exe');
     const userDir = path.join(hytaleRoot, 'UserData');

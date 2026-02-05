@@ -4,7 +4,7 @@ import { Download, Package } from 'lucide-react';
 import type { ModsTab } from '@/shared/types/mods';
 
 const tabSelectorVariants = cva(
-  'tab-selector inline-flex items-center gap-1 rounded-lg bg-black/40 border border-white/10 p-1',
+  'tab-selector inline-flex items-center gap-1 rounded-lg bg-[#0f111a]/70 border border-white/15 p-1',
   {
     variants: {
       size: {
@@ -23,8 +23,8 @@ const tabButtonVariants = cva(
   {
     variants: {
       active: {
-        true: 'bg-black/60 text-white shadow-sm',
-        false: 'text-white/70 hover:text-white hover:bg-black/50',
+        true: 'bg-white/10 text-white shadow-lg',
+        false: 'text-white/50 hover:text-white hover:bg-white/5',
       },
     },
     defaultVariants: {

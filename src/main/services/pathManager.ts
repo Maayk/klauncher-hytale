@@ -5,34 +5,35 @@ import { CONFIG } from '../../shared/constants/config';
 import logger from '../../shared/utils/logger';
 
 export class PathManager {
-  private hytaleRoot: string;
+  // Removed private property to avoid early initialization
+  // private hytaleRoot: string;
 
   constructor() {
-    this.hytaleRoot = path.join(app.getPath('appData'), 'Kyamtale');
+    // Lazy initialization - do nothing here
   }
 
   getHytaleRoot(): string {
-    return this.hytaleRoot;
+    return app.getPath('userData');
   }
 
   getGameDir(channel: string): string {
-    return path.join(this.hytaleRoot, ...CONFIG.GAME_PATH_PARTS, channel);
+    return path.join(this.getHytaleRoot(), ...CONFIG.GAME_PATH_PARTS, channel);
   }
 
   getJreDir(): string {
-    return path.join(this.hytaleRoot, ...CONFIG.JRE_PATH_PARTS);
+    return path.join(this.getHytaleRoot(), ...CONFIG.JRE_PATH_PARTS);
   }
 
   getUserDataDir(): string {
-    return path.join(this.hytaleRoot, 'UserData');
+    return path.join(this.getHytaleRoot(), 'UserData');
   }
 
   getCacheDir(): string {
-    return path.join(this.hytaleRoot, 'cache');
+    return path.join(this.getHytaleRoot(), 'cache');
   }
 
   getToolsDir(): string {
-    return path.join(this.hytaleRoot, 'tools');
+    return path.join(this.getHytaleRoot(), 'tools');
   }
 
   getButlerPath(): string {
@@ -65,16 +66,23 @@ export class PathManager {
   getLocalConfigPath(): string {
     const appPath = app.getAppPath();
     const configPath = path.join(appPath, 'config.json');
-    
+
     if (fs.existsSync(configPath)) {
       return configPath;
     }
-    
+
     const resourcesPath = path.join(process.resourcesPath || appPath, 'config.json');
     if (fs.existsSync(resourcesPath)) {
       return resourcesPath;
     }
-    
+
+    const cwdPath = path.join(process.cwd(), 'config.json');
+    if (fs.existsSync(cwdPath)) {
+      return cwdPath;
+    }
+
+
+
     return configPath;
   }
 
@@ -84,7 +92,7 @@ export class PathManager {
 
   async ensureDirectories(): Promise<void> {
     const dirs = [
-      this.hytaleRoot,
+      this.getHytaleRoot(),
       this.getCacheDir(),
       this.getToolsDir(),
       this.getUserDataDir(),
@@ -106,12 +114,12 @@ export class PathManager {
     if (platform === 'win32') {
       return 'https://broth.itch.zone/butler/windows-amd64/LATEST/archive/default';
     }
-    
+
     if (platform === 'darwin') {
       const archPart = arch === 'arm64' ? 'darwin-arm64' : 'darwin-amd64';
       return `https://broth.itch.zone/butler/${archPart}/LATEST/archive/default`;
     }
-    
+
     if (platform === 'linux') {
       return 'https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default';
     }
@@ -126,30 +134,28 @@ export class PathManager {
 
   async resolveLocalArchivePath(channel: string): Promise<{ path: string, isRemote: false } | { url: string, isRemote: true } | null> {
     const configPath = this.getLocalConfigPath();
-    
+
     if (fs.existsSync(configPath)) {
       try {
         const cfg = await fs.readJson(configPath);
-        const normalizedChannel = channel === 'beta' ? 'beta' : 'latest';
-        
-        if (cfg.hytale && cfg.hytale[normalizedChannel] && cfg.hytale[normalizedChannel].url) {
-          const url = cfg.hytale[normalizedChannel].url;
-          
+        if (cfg.hytale && cfg.hytale[channel] && cfg.hytale[channel].url) {
+          const url = cfg.hytale[channel].url;
+
           if (/^https?:\/\//i.test(url)) {
             return { url, isRemote: true };
           }
-          
+
           if (url.startsWith('file://')) {
             const filePath = decodeURIComponent(url.replace('file://', ''));
             if (fs.existsSync(filePath)) {
               return { path: filePath, isRemote: false };
             }
           }
-          
+
           if (path.isAbsolute(url) && fs.existsSync(url)) {
             return { path: url, isRemote: false };
           }
-          
+
           const relativePath = path.join(app.getAppPath(), url);
           if (fs.existsSync(relativePath)) {
             return { path: relativePath, isRemote: false };
@@ -178,6 +184,38 @@ export class PathManager {
     }
 
     return null;
+  }
+
+  async getAvailableVersions(): Promise<{ id: string, label: string, version: string }[]> {
+    const configPath = this.getLocalConfigPath();
+    logger.info('Retrieving available versions', { configPath });
+    const versions: { id: string, label: string, version: string }[] = [];
+
+    if (fs.existsSync(configPath)) {
+      try {
+        const cfg = await fs.readJson(configPath);
+        if (cfg.hytale) {
+          for (const key of Object.keys(cfg.hytale)) {
+            versions.push({
+              id: key,
+              label: key.charAt(0).toUpperCase() + key.slice(1),
+              version: cfg.hytale[key].version || 'Unknown'
+            });
+          }
+        }
+      } catch (error) {
+        logger.warn('Failed to read config for versions', { error });
+      }
+    }
+
+    // Always ensure at least 'latest' exists if nothing found
+    if (versions.length === 0) {
+      logger.warn('No versions found in config, defaulting to latest');
+      versions.push({ id: 'latest', label: 'Latest', version: 'Unknown' });
+    }
+
+    logger.info('Versions loaded', { versions });
+    return versions;
   }
 }
 

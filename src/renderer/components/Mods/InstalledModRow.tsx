@@ -26,8 +26,8 @@ export function InstalledModRow({
     return (
         <div
             className={cn(
-                "group flex items-center gap-4 p-4 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-all duration-200",
-                !isEnabled && "opacity-75 grayscale-[0.5]"
+                "group flex items-center gap-4 p-4 rounded-xl border border-white/10 bg-[#0f111a]/70 hover:bg-[#0f111a]/90 transition-all duration-200 shadow-lg",
+                !isEnabled && "opacity-50 grayscale-[0.5]"
             )}
         >
             {/* Icon */}
@@ -51,7 +51,7 @@ export function InstalledModRow({
                     <h3 className="font-semibold text-white truncate text-lg">
                         {mod.name}
                     </h3>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/50 border border-white/5">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-white/5 text-white/40 border border-white/10">
                         {mod.fileName.endsWith('.zip') || mod.fileName.endsWith('.zip.disabled') ? 'ZIP' : 'JAR'}
                     </span>
                 </div>

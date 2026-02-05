@@ -7,8 +7,8 @@ const settingCardVariants = cva(
     {
         variants: {
             variant: {
-                default: 'bg-black/50 border-white/5 hover:border-white/10 hover:bg-black/60',
-                active: 'bg-black/60 border-white/10',
+                default: 'bg-[#0f111a]/70 border-white/10 hover:border-white/20 hover:bg-[#0f111a]/90',
+                active: 'bg-[#0f111a]/90 border-white/20',
             },
         },
         defaultVariants: {
@@ -46,7 +46,7 @@ export const SettingCard = React.forwardRef<HTMLDivElement, SettingCardProps>(
                                 {title}
                             </h3>
                             {description && (
-                                <p className="text-xs text-white/40 mt-0.5 leading-relaxed">
+                                <p className="text-xs text-white/30 mt-0.5 leading-relaxed">
                                     {description}
                                 </p>
                             )}

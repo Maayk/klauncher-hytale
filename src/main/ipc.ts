@@ -28,23 +28,28 @@ interface GpuInfo {
   dedicated: string | null;
 }
 
-const downloadService = new DownloadService({
-  cacheDir: path.join(app.getPath('userData'), 'cache'),
-  tempDir: path.join(app.getPath('userData'), 'temp'),
-  maxCacheSizeMB: 1024,
-  cacheMaxAgeDays: 7,
-  maxConcurrentDownloads: 3,
-  maxBandwidthBytesPerSecond: 0,
-  retryCount: 3,
-});
-
-const gamePatcher = new GamePatcher(downloadService);
+// Lazy initialization variables
+let downloadService: DownloadService;
+let gamePatcher: GamePatcher;
 const versionChecker = new VersionChecker();
 
 export function setupIpcHandlers(): void {
   logger.info('Setting up IPC handlers');
 
-  ipcMain.handle(IPC_CHANNELS.GAME.LAUNCH, async (event, gameChannel?: 'latest' | 'beta', overrideUsername?: string) => {
+  // Initialize services lazily to ensure paths are correct
+  downloadService = new DownloadService({
+    cacheDir: path.join(app.getPath('userData'), 'cache'),
+    tempDir: path.join(app.getPath('userData'), 'temp'),
+    maxCacheSizeMB: 1024,
+    cacheMaxAgeDays: 7,
+    maxConcurrentDownloads: 3,
+    maxBandwidthBytesPerSecond: 0,
+    retryCount: 3,
+  });
+
+  gamePatcher = new GamePatcher(downloadService);
+
+  ipcMain.handle(IPC_CHANNELS.GAME.LAUNCH, async (event, gameChannel?: string, overrideUsername?: string) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
       throw new Error('No window found');
@@ -231,6 +236,15 @@ export function setupIpcHandlers(): void {
     } catch (error) {
       logger.error('Failed to open game location', { error });
       throw error;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GAME.GET_VERSIONS, async () => {
+    try {
+      return await pathManager.getAvailableVersions();
+    } catch (error) {
+      logger.error('Failed to get available versions', { error });
+      return [];
     }
   });
 

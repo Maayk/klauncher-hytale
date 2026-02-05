@@ -15,7 +15,7 @@ function createLogger(): winston.Logger {
   return winston.createLogger({
     level: logLevel,
     format: winston.format.combine(...formats),
-    defaultMeta: { service: 'kyamtale-launcher' },
+    defaultMeta: { service: 'kyamtale' },
     transports: [
       new winston.transports.File({
         filename: path.join(LOG_DIR, 'error.log'),
@@ -30,6 +30,17 @@ function createLogger(): winston.Logger {
       })
     ]
   });
+
+  if (process.env.NODE_ENV !== 'production') {
+    logger.add(new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    }));
+  }
+
+  return logger;
 }
 
 const logger = createLogger();

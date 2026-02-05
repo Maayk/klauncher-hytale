@@ -8,8 +8,8 @@ const searchBarVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-black/40 border-white/15 focus-within:border-blue-500/60 focus-within:bg-black/50 focus-within:shadow-[0_0_0_2px_rgba(0,102,204,0.25)]',
-        compact: 'bg-black/40 border-white/10 focus-within:border-blue-500/50',
+        default: 'bg-[#0f111a]/70 border-white/15 focus-within:border-white/30 focus-within:bg-[#0f111a]/90 focus-within:shadow-[0_0_0_2px_rgba(255,255,255,0.05)]',
+        compact: 'bg-[#0f111a]/50 border-white/10 focus-within:border-white/25',
       },
       size: {
         default: 'h-10 px-4',
@@ -94,7 +94,7 @@ export function SearchBar({
 
   return (
     <div className={cn(searchBarVariants({ variant, size }), className)}>
-      <Search size={size === 'sm' ? 16 : 18} className="search-bar__icon flex-shrink-0 text-white/40 transition-colors peer-focus-within:text-blue-400" />
+      <Search size={size === 'sm' ? 16 : 18} className="search-bar__icon flex-shrink-0 text-white/40 transition-colors peer-focus-within:text-white" />
       <input
         ref={inputRef}
         type="text"

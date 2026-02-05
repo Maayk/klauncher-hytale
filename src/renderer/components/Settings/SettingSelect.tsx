@@ -68,7 +68,7 @@ export const SettingSelect = React.forwardRef<HTMLDivElement, SettingSelectProps
                     onClick={handleToggle}
                     className={cn(
                         selectVariants({ size }),
-                        'bg-black/50 border-white/5 hover:border-white/10 hover:bg-black/60',
+                        'bg-[#0f111a]/70 border-white/10 hover:border-white/20 hover:bg-[#0f111a]/90',
                         disabled && 'opacity-40 cursor-not-allowed',
                         className
                     )}
@@ -85,7 +85,7 @@ export const SettingSelect = React.forwardRef<HTMLDivElement, SettingSelectProps
                 </div>
 
                 {isOpen && (
-                    <div className="absolute bottom-full mb-1.5 right-0 min-w-[160px] py-1 rounded-md bg-black/90 backdrop-blur-md border border-white/10 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-1 duration-200 max-h-60 overflow-y-auto launcher-scrollbar">
+                    <div className="absolute bottom-full mb-1.5 right-0 min-w-[160px] py-1 rounded-md bg-[#0f111a]/95 border border-white/15 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-1 duration-200 max-h-60 overflow-y-auto launcher-scrollbar">
                         {options.map((option) => (
                             <button
                                 key={option.value}

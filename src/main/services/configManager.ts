@@ -13,14 +13,25 @@ import {
 import { MIGRATION_REGISTRY, LATEST_VERSION } from '../../shared/schemas/migrations';
 import { z } from 'zod';
 
-const CONFIG_DIR = app.getPath('userData');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'user-settings.json');
-const GAME_VERSION_FILE = path.join(CONFIG_DIR, 'gameVersion.json');
+// Removed top-level constants to ensure app.getPath('userData') is called after app.setPath
+// const CONFIG_DIR = app.getPath('userData');
+// const CONFIG_FILE = path.join(CONFIG_DIR, 'user-settings.json');
+// const GAME_VERSION_FILE = path.join(CONFIG_DIR, 'gameVersion.json');
 
 class ConfigManager {
   private settings: Settings = DEFAULT_SETTINGS;
   private gameVersion: GameVersion | null = null;
   private initialized = false;
+
+
+
+  private getConfigFile(): string {
+    return path.join(this.getConfigDir(), 'user-settings.json');
+  }
+
+  private getGameVersionFile(): string {
+    return path.join(this.getConfigDir(), 'gameVersion.json');
+  }
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -42,7 +53,7 @@ class ConfigManager {
 
   private async ensureConfigDirectory(): Promise<void> {
     try {
-      await fs.mkdir(CONFIG_DIR, { recursive: true });
+      await fs.mkdir(this.getConfigDir(), { recursive: true });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EPERM') {
         logger.error('Permission denied creating config directory', { error });
@@ -56,7 +67,7 @@ class ConfigManager {
 
   private async loadSettings(): Promise<void> {
     try {
-      const data = await fs.readFile(CONFIG_FILE, 'utf-8');
+      const data = await fs.readFile(this.getConfigFile(), 'utf-8');
       const parsed = JSON.parse(data);
 
       const version = parsed.version || 1;
@@ -106,7 +117,7 @@ class ConfigManager {
   async saveSettings(): Promise<void> {
     try {
       const validated = SettingsSchemaV2.parse(this.settings);
-      await fs.writeFile(CONFIG_FILE, JSON.stringify(validated, null, 2), 'utf-8');
+      await fs.writeFile(this.getConfigFile(), JSON.stringify(validated, null, 2), 'utf-8');
       logger.debug('Settings saved successfully');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EPERM') {
@@ -120,7 +131,7 @@ class ConfigManager {
 
   private async loadGameVersion(): Promise<void> {
     try {
-      const data = await fs.readFile(GAME_VERSION_FILE, 'utf-8');
+      const data = await fs.readFile(this.getGameVersionFile(), 'utf-8');
       const parsed = JSON.parse(data);
       this.gameVersion = GAME_VERSION_SCHEMA.parse(parsed);
       logger.debug('Game version loaded', this.gameVersion);
@@ -139,7 +150,7 @@ class ConfigManager {
     let validated: GameVersion;
     try {
       validated = GAME_VERSION_SCHEMA.parse(version);
-      await fs.writeFile(GAME_VERSION_FILE, JSON.stringify(validated, null, 2), 'utf-8');
+      await fs.writeFile(this.getGameVersionFile(), JSON.stringify(validated, null, 2), 'utf-8');
       this.gameVersion = validated;
       logger.debug('Game version saved', version);
     } catch (error) {
@@ -186,11 +197,11 @@ class ConfigManager {
   }
 
   getConfigDir(): string {
-    return CONFIG_DIR;
+    return app.getPath('userData');
   }
 
   getGameDir(): string {
-    return this.settings.gameDir || path.join(CONFIG_DIR, 'game');
+    return this.settings.gameDir || path.join(this.getConfigDir(), 'game');
   }
 
   async setGameDir(dir: string): Promise<void> {
@@ -216,11 +227,11 @@ class ConfigManager {
     }
   }
 
-  getGameChannel(): 'latest' | 'beta' {
+  getGameChannel(): string {
     return this.settings.gameChannel;
   }
 
-  async setGameChannel(channel: 'latest' | 'beta'): Promise<void> {
+  async setGameChannel(channel: string): Promise<void> {
     await this.updateSettings({ gameChannel: channel });
   }
 

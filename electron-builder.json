@@ -9,6 +9,9 @@
         "dist-electron/**/*",
         "package.json"
     ],
+    "extraResources": [
+        "config.json"
+    ],
     "mac": {
         "target": [
             "dmg",
@@ -24,7 +27,7 @@
                 ]
             }
         ],
-        "icon": "src/assets/image/logo.png",
+        "icon": "src/assets/image/logo.ico",
         "signAndEditExecutable": false,
         "artifactName": "${productName}-Setup-${version}.${ext}"
     },

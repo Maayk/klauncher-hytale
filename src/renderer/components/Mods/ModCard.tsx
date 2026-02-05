@@ -9,8 +9,8 @@ const modCardVariants = cva(
   {
     variants: {
       variant: {
-        available: 'bg-black/60 border-white/10 hover:border-white/20 hover:bg-black/70 hover:shadow-xl hover:shadow-blue-900/20',
-        installed: 'bg-black/50 border-white/15 hover:border-white/25 hover:bg-black/60 hover:shadow-xl hover:shadow-blue-900/20',
+        available: 'bg-[#0f111a]/85 border-white/15 hover:border-white/30 hover:bg-[#0f111a]/95 hover:shadow-2xl hover:shadow-black/50',
+        installed: 'bg-[#0f111a]/70 border-white/10 hover:border-white/20 hover:bg-[#0f111a]/80 hover:shadow-2xl hover:shadow-black/50',
       },
       size: {
         default: 'w-full',
@@ -92,11 +92,11 @@ export function ModCard({
             </div>
           )}
           <div className="mods-card__info flex-1 min-w-0">
-            <h3 className="mods-card__title text-base font-semibold text-white leading-tight truncate group-hover:text-blue-300 transition-colors">
+            <h3 className="mods-card__title text-base font-semibold text-white leading-tight truncate group-hover:text-white transition-colors">
               {modName}
             </h3>
             <div className="mods-card__meta flex items-center gap-2 mt-1.5 text-xs text-white/50">
-              <span className="font-medium text-white/70">{modAuthor}</span>
+              <span className="font-medium text-white/80">{modAuthor}</span>
               {isAvailable && modVersion && (
                 <>
                   <span className="w-1 h-1 bg-white/30 rounded-full" />
@@ -115,7 +115,7 @@ export function ModCard({
           </Button>
         </div>
 
-        <p className="mods-card__description text-sm text-white/60 line-clamp-2 mb-4 flex-1">
+        <p className="mods-card__description text-sm text-white/70 line-clamp-2 mb-4 flex-1">
           {modDescription}
         </p>
 
@@ -157,7 +157,7 @@ export function ModCard({
               )}
             </Button>
           )}
-          
+
           {!isAvailable && installedMod && (
             <>
               <Button

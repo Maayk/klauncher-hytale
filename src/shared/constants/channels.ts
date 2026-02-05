@@ -18,7 +18,8 @@ export const IPC_CHANNELS = {
         IS_RUNNING: 'game:is-running',
         REPAIR: 'game:repair',
         OPEN_LOCATION: 'game:open-location',
-        GET_GPU_INFO: 'game:get-gpu-info'
+        GET_GPU_INFO: 'game:get-gpu-info',
+        GET_VERSIONS: 'game:get-versions'
     },
     PATCHER: {
         START: 'patcher:start',

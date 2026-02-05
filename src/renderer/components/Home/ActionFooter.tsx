@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '@/renderer/components/ui/button';
+import { VersionSelector } from './VersionSelector';
 import { ChevronDown, Play, Check } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
 import { IPC_CHANNELS } from '@/shared/constants/channels';
@@ -44,7 +45,7 @@ export function ActionFooter() {
             // Fetch fresh settings to get the latest nickname
             const freshSettings = await window.electronAPI.invoke(IPC_CHANNELS.SETTINGS.GET) as Settings;
 
-            const channel = 'latest';
+            const channel = freshSettings?.gameChannel || settings?.gameChannel || 'latest';
             const playerName = freshSettings?.playerName || settings?.playerName || 'Player';
 
             await window.electronAPI.invoke(IPC_CHANNELS.GAME.LAUNCH, channel, playerName);
@@ -104,12 +105,7 @@ export function ActionFooter() {
         <div className="flex flex-col items-end gap-3 shrink-0">
 
             {/* Version Display Only */}
-            <div className="flex items-center gap-5 rounded-lg bg-black/50 px-4 py-2.5 backdrop-blur-xl border border-white/10">
-                <div className="flex flex-col">
-                    <span className="text-[8px] font-bold tracking-[0.15em] text-white/40 uppercase mb-0.5">Version</span>
-                    <span className="text-[11px] font-semibold text-white/90 tabular-nums">28.01.2026</span>
-                </div>
-            </div>
+            <VersionSelector />
 
             {/* Play Button - Clean White Style */}
             <Button

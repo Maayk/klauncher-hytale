@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const SettingsSchemaV1 = z.object({
   version: z.literal(1),
   gameDir: z.string().min(1, 'Game directory is required'),
-  gameChannel: z.enum(['latest', 'beta']),
+  gameChannel: z.string().default('latest'),
   javaPath: z.string().optional(),
   language: z.enum(['pt-BR', 'en-US', 'es-ES']),
   windowBounds: z.object({
@@ -18,7 +18,7 @@ export const SettingsSchemaV1 = z.object({
 export const SettingsSchemaV2 = z.object({
   version: z.literal(2),
   gameDir: z.string().min(1, 'Game directory is required'),
-  gameChannel: z.enum(['latest', 'beta']),
+  gameChannel: z.string().default('latest'),
   javaPath: z.string().optional(),
   useCustomJava: z.boolean().default(false),
   customJavaPath: z.string().optional(),
@@ -60,12 +60,12 @@ export const DEFAULT_SETTINGS: Settings = {
   hideLauncher: false,
   playerUUID: '',
   playerName: 'Player',
-  setupUrl: 'https://github.com/Maayk/kyam-launcher/releases/download/Client/setup-base.zip'
+  setupUrl: 'https://github.com/Maayk/klauncher-hytale/releases/download/initial/klauncher-base.zip'
 };
 
 export const GAME_VERSION_SCHEMA = z.object({
   version: z.string().min(1),
-  channel: z.enum(['latest', 'beta']),
+  gameChannel: z.string().default('latest'),
   installedAt: z.number().int().positive(),
   patchedAt: z.number().int().positive().optional()
 });

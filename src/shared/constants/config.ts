@@ -21,8 +21,6 @@ export const CONFIG = {
   AUTH_URL: 'https://auth.hytale.com',
   SESSION_URL: 'https://sessions.sanasol.ws',
 
-  VERSION_API_URL: 'https://launchermeta.mojang.com/mc/game/version_manifest',
-
   CURSEFORGE_API_BASE: 'https://api.curseforge.com/v1',
   CURSEFORGE_GAME_ID: 459860,
 

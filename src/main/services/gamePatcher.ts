@@ -60,7 +60,7 @@ export class GamePatcher {
     this.downloadService = downloadService;
   }
 
-  async patchGame(gameDir: string, channel: 'latest' | 'beta', onProgress?: (stage: string, progress: number, message: string) => void): Promise<void> {
+  async patchGame(gameDir: string, channel: string, onProgress?: (stage: string, progress: number, message: string) => void): Promise<void> {
     await this.updateGameFiles(gameDir, channel, onProgress);
   }
 
@@ -235,15 +235,36 @@ export class GamePatcher {
     const normalizedChannel = this.normalizeConfigChannel(channel);
     let configUrl = null;
 
-    const configPath = this.patchConfig.localConfigPath;
-    try {
-      await fs.access(configPath);
-      const configContent = await fs.readFile(configPath, 'utf-8');
-      const cfg = JSON.parse(configContent);
-      const hytaleConfig = cfg.hytale?.[normalizedChannel] || cfg.hytale?.latest;
-      configUrl = hytaleConfig?.url || null;
-    } catch {
-      configUrl = null;
+    // Robust config path resolution - consistent with VersionChecker
+    const configPaths = [
+      path.join(process.resourcesPath, 'config.json'),
+      path.join(app.getAppPath(), 'config.json'),
+      path.join(process.cwd(), 'config.json')
+    ];
+
+    let foundConfigPath = null;
+
+    for (const configPath of configPaths) {
+      try {
+        await fs.access(configPath);
+        const configContent = await fs.readFile(configPath, 'utf-8');
+        const cfg = JSON.parse(configContent);
+        const hytaleConfig = cfg.hytale?.[normalizedChannel] || cfg.hytale?.latest;
+
+        if (hytaleConfig?.url) {
+          configUrl = hytaleConfig.url;
+          foundConfigPath = configPath;
+          logger.info('Found custom game configuration', { configPath, channel: normalizedChannel, url: configUrl });
+          break;
+        }
+      } catch (e) {
+        // Continue to next path
+      }
+    }
+
+    if (!configUrl) {
+      // Only log if we genuinely couldn't find any config with a URL
+      logger.debug('No custom game URL found in any config.json location');
     }
 
     if (configUrl && this.isHttpUrl(configUrl)) {
@@ -257,7 +278,14 @@ export class GamePatcher {
       } else if (path.isAbsolute(configUrl)) {
         candidate = configUrl;
       } else {
-        candidate = path.join(app.getAppPath(), configUrl);
+        // Resolve relative paths relative to the CONFIG FILE location, or AppPath?
+        // Usually relative to where the config is.
+        // If foundConfigPath is defined, we should resolve relative to its directory.
+        if (foundConfigPath) {
+          candidate = path.join(path.dirname(foundConfigPath), configUrl);
+        } else {
+          candidate = path.join(app.getAppPath(), configUrl);
+        }
       }
     }
 
@@ -397,29 +425,31 @@ export class GamePatcher {
   }
 
   private async tryInstallFromLocalArchive(gameDir: string, channel: string, onProgress?: (stage: string, progress: number, message: string) => void): Promise<boolean> {
-    const archiveSource = await this.resolveLocalArchivePath(channel);
+    const archiveSource = await pathManager.resolveLocalArchivePath(channel);
     if (!archiveSource) return false;
 
-    let archivePath = archiveSource.path;
-    if (archiveSource.isRemote && archiveSource.url) {
+    let archivePath = (archiveSource as any).path;
+    if (archiveSource.isRemote && (archiveSource as any).url) {
       const cacheDir = pathManager.getCacheDir();
       await fs.mkdir(cacheDir, { recursive: true });
-      let fileName = `hytale-${this.normalizeConfigChannel(channel)}.zip`;
+      let fileName = `hytale-${channel}.zip`;
       try {
-        const urlObj = new URL(archiveSource.url);
+        const urlObj = new URL((archiveSource as any).url);
         const baseName = path.basename(urlObj.pathname);
         if (baseName) fileName = baseName;
       } catch {
         logger.warn('Failed to parse archive URL, using default filename');
       }
       archivePath = path.join(cacheDir, fileName);
-      await fs.unlink(archivePath).catch(() => { });
-      await fs.unlink(archivePath + '.tmp').catch(() => { });
+
+      // Clean up previous attempts
+      await fs.rm(archivePath, { force: true }).catch(() => { });
+      await fs.rm(archivePath + '.tmp', { force: true }).catch(() => { });
 
       onProgress?.('downloading', 0, 'Downloading game from custom source...');
 
       const downloadResult = await this.downloadService.downloadFile({
-        url: archiveSource.url,
+        url: (archiveSource as any).url,
         destPath: archivePath,
         expectedHash: undefined,
         priority: 'high'
@@ -428,7 +458,7 @@ export class GamePatcher {
       });
 
       if (!downloadResult.success) {
-        throw new Error(`Failed to download custom game archive from: ${archiveSource.url}`);
+        throw new Error(`Failed to download custom game archive from: ${(archiveSource as any).url}`);
       }
     }
 
@@ -440,7 +470,7 @@ export class GamePatcher {
     }
 
     const cacheDir = pathManager.getCacheDir();
-    const tempDir = path.join(cacheDir, `extract_${this.normalizeConfigChannel(channel)}`);
+    const tempDir = path.join(cacheDir, `extract_${channel}`);
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
     await this.extractArchive(archivePath, tempDir);
 
