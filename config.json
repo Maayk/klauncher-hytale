@@ -9,19 +9,5 @@
     "curseforge_key": "$2a$10$S7nVFhQKpxteK4Fwf9yoxejmI.NjJiE53Qh4IeaDbIu/./oTM/MKa",
     "curseforge_url": "https://api.curseforge.com/v1",
     "hytale_game_id": 70216
-  },
-  "hytale": {
-    "latest": {
-      "version": "28.01.2026-87D03BE09",
-      "url": "https://github.com/Maayk/klauncher-hytale/releases/download/initial/28.01.2026-87D03BE09.zip",
-      "notes": "Latest version of Hytale for KyamTale Launcher users.",
-      "mandatory": true
-    },
-    "pre-release": {
-      "version": "29.01.2026-301E13929",
-      "url": "https://github.com/Maayk/klauncher-hytale/releases/download/initial/29.01.2026-301E13929.zip",
-      "notes": "Version pre-released, not recomended to use.",
-      "mandatory": false
-    }
   }
 }

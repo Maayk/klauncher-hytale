@@ -301,7 +301,23 @@ export function setupIpcHandlers(): void {
             resolve('GPU Detection Failed');
           });
       } else {
-        resolve('Unsupported Platform');
+        // Basic Linux/Mac Fallback
+        // We could use lspci on Linux, but strictly speaking "Unsupported" is fine 
+        // as long as it doesn't crash.
+        // Let's check for lspci just in case
+        execAsync('lspci | grep -i vga')
+          .then(({ stdout }) => {
+            const lines = stdout.split('\n').filter(l => l.trim().length > 0);
+            const gpus: GpuInfo = {
+              all: lines,
+              integrated: null,
+              dedicated: null
+            };
+            resolve(gpus);
+          })
+          .catch(() => {
+            resolve('Unsupported Platform');
+          });
       }
     });
 

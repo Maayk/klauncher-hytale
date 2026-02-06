@@ -5,12 +5,15 @@ import { promisify } from 'node:util';
 import { app } from 'electron';
 import AdmZip from 'adm-zip';
 import StreamZip from 'node-stream-zip';
+import * as tar from 'tar';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { DownloadService } from './downloadService';
 import { pathManager } from './pathManager';
 import logger from '../../shared/utils/logger';
 import { CONFIG } from '../../shared/constants/config';
+import { configManager } from './configManager';
+import { patchDiscovery } from './patchDiscovery';
 
 const execFileAsync = promisify(execFile);
 
@@ -326,6 +329,16 @@ export class GamePatcher {
       return;
     }
 
+    if (ext === '.tar.gz' || ext === '.tgz' || ext === '.gz') { // Handle tar.gz
+      logger.info('Extracting tarball', { archivePath, destDir });
+      await tar.x({
+        file: archivePath,
+        C: destDir,
+        preserveOwner: false, // Critical for Linux
+      });
+      return;
+    }
+
     throw new Error(`Unsupported archive format: ${ext}`);
   }
 
@@ -489,96 +502,179 @@ export class GamePatcher {
 
     await this.moveDirContents(sourceDir, gameDir);
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
+
+    // Linux/Mac Requirement: Make the binary executable
+    if (process.platform !== 'win32') {
+      try {
+        const clientBin = pathManager.getClientExecutable(gameDir);
+        await fs.chmod(clientBin, 0o755);
+        logger.info('Marked game binary as executable', { clientBin });
+      } catch (e) {
+        logger.warn('Failed to strict permissions on game binary', { error: e });
+      }
+    }
+
     return true;
   }
 
   private async updateGameFiles(gameDir: string, channel: string, onProgress?: (stage: string, progress: number, message: string) => void): Promise<void> {
     const installedFromLocal = await this.tryInstallFromLocalArchive(gameDir, channel, onProgress);
-    if (installedFromLocal) {
-      onProgress?.('complete', 100, 'Game installed successfully from local archive');
-      return;
-    }
 
-    if (channel !== 'latest') {
-      throw new Error(`Failed to install custom version for channel '${channel}'. Verifique o arquivo de configuração ou a URL.`);
-    }
+    // 1. Initialize logic: Check if we have a version record
+    let currentInfo = configManager.getGameVersion(channel);
 
-    const patcherBin = await this.ensureTools(onProgress);
+    // Logic: "Assume Latest" for Local Installs (Sync)
+    if (installedFromLocal || (!currentInfo && await fs.access(path.join(gameDir, 'Client', 'HytaleClient.exe')).then(() => true).catch(() => false))) {
+      logger.info('Detected local installation without version record. Attempting synchronization...');
+      onProgress?.('syncing', 0, 'Synchronizing version with server...');
 
-    const sysOs = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'darwin' : 'linux';
-    const sysArch = 'amd64';
-
-    const patchUrlBase = `https://game-patches.hytale.com/patches/${sysOs}/${sysArch}/release/0/`;
-    const cacheDir = pathManager.getCacheDir();
-    await fs.mkdir(cacheDir, { recursive: true });
-
-    const targetPatchFile = path.join(cacheDir, this.patchConfig.primaryPatch);
-
-    const patchExists = await fs.access(targetPatchFile).then(() => true).catch(() => false);
-
-    if (!patchExists) {
-      onProgress?.('downloading_patch', 10, 'Downloading game patch...');
-
-      try {
-        logger.info(`Attempting download: ${this.patchConfig.primaryPatch}`);
-
-        const downloadResult = await this.downloadService.downloadFile({
-          url: patchUrlBase + this.patchConfig.primaryPatch,
-          destPath: targetPatchFile,
-          expectedHash: undefined,
-          priority: 'high'
-        }, (progress) => {
-          onProgress?.('downloading_patch', 10 + progress.percent * 0.4, `Downloading patch... ${Math.round(progress.percent)}%`);
-        });
-
-        if (!downloadResult.success) {
-          throw new Error('Failed to download primary patch');
-        }
-      } catch (err) {
-        logger.error(`Download failed for ${this.patchConfig.primaryPatch}, attempting fallback...`, { error: err });
-
-        const fallbackPath = path.join(cacheDir, this.patchConfig.fallbackPatch);
-        try {
-          onProgress?.('downloading_patch_fallback', 10, 'Attempting fallback patch...');
-
-          const fallbackResult = await this.downloadService.downloadFile({
-            url: patchUrlBase + this.patchConfig.fallbackPatch,
-            destPath: fallbackPath,
-            expectedHash: undefined,
-            priority: 'high'
-          }, (progress) => {
-            onProgress?.('downloading_patch_fallback', 10 + progress.percent * 0.4, `Downloading fallback... ${Math.round(progress.percent)}%`);
-          });
-
-          if (!fallbackResult.success) {
-            throw new Error('Failed to download fallback patch');
-          }
-
-          await fs.copyFile(fallbackPath, targetPatchFile);
-        } catch (fallbackErr) {
-          logger.error('All download attempts failed', { error: fallbackErr });
-          throw err;
-        }
+      // Strategy: Use findLatestBaseVersion to get a "known good" anchor.
+      const latestBase = await patchDiscovery.findLatestBaseVersion(channel);
+      if (latestBase) {
+        logger.info(`Assuming local installation is at least ver ${latestBase.toVersion}`);
+        currentInfo = {
+          version: latestBase.toVersion,
+          channel: channel,
+          installedAt: Date.now(),
+          patchedAt: Date.now()
+        };
+        await configManager.saveGameVersion(channel, currentInfo);
+      } else {
+        // Fallback
+        currentInfo = { version: 0, channel: channel, installedAt: Date.now() };
       }
     }
 
+    if (!currentInfo) {
+      currentInfo = { version: 0, channel: channel, installedAt: Date.now() };
+    }
+
+    let currentVerVal = currentInfo.version;
+
+    // Safety Check: If config says we have a version, but files are missing -> Force 0
+    if (currentVerVal > 0) {
+      const clientExe = path.join(gameDir, 'Client', 'HytaleClient.exe');
+      if (!await fs.access(clientExe).then(() => true).catch(() => false)) {
+        logger.warn('Version record exists but game files are missing. Forcing fresh install.', { currentVerVal });
+        currentVerVal = 0;
+      }
+    }
+
+    // 2. Fresh Install Flow (If version is 0)
+    if (currentVerVal === 0) {
+      await this.performFreshInstall(gameDir, channel, onProgress);
+      currentInfo = configManager.getGameVersion(channel)!;
+      currentVerVal = currentInfo.version;
+    }
+
+    // 3. Incremental Update Loop with Self-Healing
+    const patcherBin = await this.ensureTools(onProgress);
     const stagingArea = path.join(gameDir, 'staging_temp');
+
+    while (true) {
+      const nextPatch = await patchDiscovery.findNextPatch(channel, currentVerVal);
+      if (!nextPatch) {
+        logger.info('No further updates found', { currentVerVal });
+        break;
+      }
+
+      onProgress?.('downloading_patch', 0, `Downloading update ${nextPatch.toVersion}...`);
+
+      try {
+        await this.applyPatchOrRescue(nextPatch, gameDir, stagingArea, patcherBin, channel, onProgress);
+
+        currentVerVal = nextPatch.toVersion;
+        await configManager.saveGameVersion(channel, {
+          version: nextPatch.toVersion,
+          channel: channel,
+          installedAt: currentInfo?.installedAt || Date.now(),
+          patchedAt: Date.now()
+        });
+
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    await fs.rm(stagingArea, { recursive: true, force: true }).catch(() => { });
+    onProgress?.('complete', 100, `Game updated to version ${currentVerVal}`);
+  }
+
+  private async performFreshInstall(gameDir: string, channel: string, onProgress?: (stage: string, progress: number, message: string) => void): Promise<void> {
+    onProgress?.('checking_base', 0, 'Searching for latest base version...');
+    const basePatch = await patchDiscovery.findLatestBaseVersion(channel);
+
+    if (!basePatch) {
+      throw new Error('Could not find any installable version of Hytale. CDN might be down.');
+    }
+
+    // Ensure tools are ready
+    const patcherBin = await this.ensureTools(onProgress);
+    const stagingArea = path.join(gameDir, 'staging_temp');
+
     await fs.mkdir(gameDir, { recursive: true });
 
-    const patchArgs = ['apply', '--staging-dir', stagingArea, targetPatchFile, gameDir];
+    // Base install is just applying patch 0 -> N
+    await this.applyPatchInternal(basePatch, gameDir, stagingArea, patcherBin, onProgress);
 
-    onProgress?.('applying_patch', 70, 'Applying game patch...');
+    await configManager.saveGameVersion(channel, {
+      version: basePatch.toVersion,
+      channel: channel,
+      installedAt: Date.now(),
+      patchedAt: Date.now()
+    });
+
+    await fs.rm(stagingArea, { recursive: true, force: true }).catch(() => { });
+  }
+
+  // Unified method for applying ANY patch (incremental or full/base)
+  private async applyPatchInternal(patchInfo: { fromVersion: number, toVersion: number, url: string }, gameDir: string, stagingArea: string, patcherBin: string, onProgress?: (stage: string, progress: number, message: string) => void): Promise<void> {
+    const patchFileName = `patch-${patchInfo.fromVersion}-to-${patchInfo.toVersion}.pwr`;
+    const patchPath = path.join(pathManager.getCacheDir(), patchFileName);
+
+    // Download the .pwr file
+    const dlResult = await this.downloadService.downloadFile({
+      url: patchInfo.url,
+      destPath: patchPath,
+      expectedHash: undefined,
+      priority: 'high'
+    }, (p) => onProgress?.('downloading_patch', p.percent, `Downloading data (Build ${patchInfo.toVersion})... ${Math.round(p.percent)}%`));
+
+    if (!dlResult.success) throw new Error(`Failed to download data ${patchFileName}`);
+
+    onProgress?.('applying_patch', 0, `Installing version ${patchInfo.toVersion}...`);
+
+    // Ensure game dir exists
+    await fs.mkdir(gameDir, { recursive: true });
+
+    // Butler apply command
+    const patchArgs = ['apply', '--staging-dir', stagingArea, patchPath, gameDir];
 
     try {
       await execFileAsync(patcherBin, patchArgs, { maxBuffer: 10 * 1024 * 1024 });
-      logger.info('Game files updated successfully');
-    } catch (error) {
-      logger.error('Patcher failed', { error });
-      throw new Error(`Update failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      await fs.rm(stagingArea, { recursive: true, force: true }).catch(() => { });
+      // Always cleanup the large patch file to save space
+      await fs.unlink(patchPath).catch(() => { });
     }
+  }
 
-    onProgress?.('complete', 100, 'Game patched successfully');
+  private async applyPatchOrRescue(patchInfo: any, gameDir: string, stagingArea: string, patcherBin: string, channel: string, onProgress?: (stage: string, progress: number, message: string) => void): Promise<void> {
+    try {
+      // Try normal incremental patch
+      await this.applyPatchInternal(patchInfo, gameDir, stagingArea, patcherBin, onProgress);
+    } catch (patchError: any) {
+      logger.warn(`Patch application failed. Initiating Rescue Protocol...`, { error: patchError });
+      onProgress?.('rescue_mode', 0, `Repairing installation (Downloading Full Build ${patchInfo.toVersion})...`);
+
+      // Construct rescue patch info (0 -> Target)
+      const rescuePatch = {
+        fromVersion: 0,
+        toVersion: patchInfo.toVersion,
+        url: patchDiscovery.getFullVersionUrl(patchInfo.toVersion, channel)
+      };
+
+      // Apply rescue patch (Full download + Apply)
+      await this.applyPatchInternal(rescuePatch, gameDir, stagingArea, patcherBin, onProgress);
+    }
   }
 }

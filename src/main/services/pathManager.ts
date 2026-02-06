@@ -3,6 +3,7 @@ import fs from 'fs-extra';
 import { app } from 'electron';
 import { CONFIG } from '../../shared/constants/config';
 import logger from '../../shared/utils/logger';
+import { configManager } from './configManager';
 
 export class PathManager {
 
@@ -45,7 +46,8 @@ export class PathManager {
   }
 
   getClientExecutable(gameDir: string): string {
-    return path.join(gameDir, 'Client', 'HytaleClient.exe');
+    const clientBin = process.platform === 'win32' ? 'HytaleClient.exe' : 'HytaleClient';
+    return path.join(gameDir, 'Client', clientBin);
   }
 
   getServerJar(gameDir: string): string {
@@ -185,33 +187,62 @@ export class PathManager {
   }
 
   async getAvailableVersions(): Promise<{ id: string, label: string, version: string }[]> {
-    const configPath = this.getLocalConfigPath();
-    logger.info('Retrieving available versions', { configPath });
     const versions: { id: string, label: string, version: string }[] = [];
+    // Define core channels that are ALWAYS available via CDN
+    const coreChannels = ['latest', 'beta'];
+    const seenChannels = new Set<string>();
 
-    if (fs.existsSync(configPath)) {
+    for (const channel of coreChannels) {
+      const label = channel === 'beta' ? 'Pre-Release' : 'Latest';
+      let versionText = 'Not Installed';
+
+      // 1. Check ConfigManager (Installed Version)
+      const info = configManager.getGameVersion(channel);
+      if (info) {
+        versionText = `Build ${info.version}`;
+      } else {
+        // 2. Check Legacy Config (Custom ZIP URL) - purely for display
+        const legacyConfigPath = this.getLocalConfigPath();
+        if (fs.existsSync(legacyConfigPath)) {
+          try {
+            const cfg = await fs.readJson(legacyConfigPath);
+            if (cfg.hytale && cfg.hytale[channel] && cfg.hytale[channel].version) {
+              versionText = cfg.hytale[channel].version;
+            }
+          } catch { } // Ignore read errors
+        }
+      }
+
+      versions.push({
+        id: channel,
+        label: label,
+        version: versionText
+      });
+      seenChannels.add(channel);
+    }
+
+    // 3. Add any OTHER channels defined in config.json that aren't core (e.g. custom user channels)
+    const legacyConfigPath = this.getLocalConfigPath();
+    if (fs.existsSync(legacyConfigPath)) {
       try {
-        const cfg = await fs.readJson(configPath);
+        const cfg = await fs.readJson(legacyConfigPath);
         if (cfg.hytale) {
           for (const key of Object.keys(cfg.hytale)) {
-            versions.push({
-              id: key,
-              label: key.charAt(0).toUpperCase() + key.slice(1),
-              version: cfg.hytale[key].version || 'Unknown'
-            });
+            if (!seenChannels.has(key)) {
+              versions.push({
+                id: key,
+                label: key.charAt(0).toUpperCase() + key.slice(1),
+                version: cfg.hytale[key].version || 'External'
+              });
+              seenChannels.add(key);
+            }
           }
         }
       } catch (error) {
-        logger.warn('Failed to read config for versions', { error });
+        logger.warn('Failed to read legacy config for extra versions', { error });
       }
     }
 
-    if (versions.length === 0) {
-      logger.warn('No versions found in config, defaulting to latest');
-      versions.push({ id: 'latest', label: 'Latest', version: 'Unknown' });
-    }
-
-    logger.info('Versions loaded', { versions });
     return versions;
   }
 }

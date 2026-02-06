@@ -63,11 +63,16 @@ export const DEFAULT_SETTINGS: Settings = {
   setupUrl: 'https://github.com/Maayk/klauncher-hytale/releases/download/initial/klauncher-base.zip'
 };
 
-export const GAME_VERSION_SCHEMA = z.object({
-  version: z.string().min(1),
-  gameChannel: z.string().default('latest'),
+// Game Version Tracking
+export const GAME_VERSION_INFO_SCHEMA = z.object({
+  version: z.coerce.number().int().nonnegative(),
+  channel: z.string().default('latest'),
   installedAt: z.number().int().positive(),
-  patchedAt: z.number().int().positive().optional()
+  patchedAt: z.number().int().positive().optional(),
+  build: z.string().optional() // Optional build hash/id
 });
 
-export type GameVersion = z.infer<typeof GAME_VERSION_SCHEMA>;
+export const GAME_VERSIONS_MAP_SCHEMA = z.record(z.string(), GAME_VERSION_INFO_SCHEMA);
+
+export type GameVersionInfo = z.infer<typeof GAME_VERSION_INFO_SCHEMA>;
+export type GameVersionsMap = z.infer<typeof GAME_VERSIONS_MAP_SCHEMA>;

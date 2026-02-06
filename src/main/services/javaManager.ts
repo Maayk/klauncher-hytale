@@ -1,9 +1,11 @@
-import * as fs from 'fs/promises';
+import fs from 'fs-extra';
 import * as path from 'path';
 import { app } from 'electron';
 import * as os from 'os';
 import StreamZip from 'adm-zip';
+import * as tar from 'tar';
 import { pathManager } from './pathManager';
+import logger from '../../shared/utils/logger';
 
 export interface JavaConfig {
   download_url: {
@@ -102,27 +104,110 @@ export class JavaManager {
       progress: 100,
       message: 'Java Runtime extraído com sucesso',
     });
+
+    logger.info('Zip extraction complete', { extractTo });
+  }
+
+  private async extractTarGz(
+    tarPath: string,
+    extractTo: string,
+    onProgress: ProgressCallback
+  ): Promise<void> {
+    logger.info('Starting tar.gz extraction', { tarPath, extractTo });
+
+    try {
+      await tar.x({
+        file: tarPath,
+        C: extractTo,
+        strict: true,
+        preserveOwner: false, // Critical for avoiding EACCES on Linux if files are root-owned in archive
+      });
+
+      onProgress({
+        status: 'extracting',
+        progress: 100,
+        message: 'Java Runtime extraído com sucesso',
+      });
+
+      logger.info('Tar.gz extraction complete');
+    } catch (error) {
+      logger.error('Failed to extract tar.gz', { error, tarPath, extractTo });
+      throw error;
+    }
+  }
+
+  private async logDirectoryStructure(dirPath: string, depth = 0, maxDepth = 3): Promise<void> {
+    if (depth > maxDepth) return;
+    try {
+      const items = await fs.readdir(dirPath);
+      logger.info(`Directory structure [depth=${depth}]`, { dirPath, items });
+
+      for (const item of items) {
+        const itemPath = path.join(dirPath, item);
+        const stat = await fs.stat(itemPath);
+        if (stat.isDirectory()) {
+          await this.logDirectoryStructure(itemPath, depth + 1, maxDepth);
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to log directory structure', { dirPath, error });
+    }
   }
 
   private async flattenNestedDirectory(baseDir: string): Promise<void> {
+    logger.info('Starting directory flattening', { baseDir });
+    await this.logDirectoryStructure(baseDir); // Log BEFORE flattening
+
     const items = await fs.readdir(baseDir);
+    let jdkRootDir: string | null = null;
 
-    if (items.length === 1) {
-      const nestedDirPath = path.join(baseDir, items[0]);
-      const stat = await fs.stat(nestedDirPath);
+    logger.debug('Scanning for JDK root', { items });
 
-      if (stat.isDirectory()) {
-        const nestedItems = await fs.readdir(nestedDirPath);
-
-        for (const item of nestedItems) {
-          const sourcePath = path.join(nestedDirPath, item);
-          const destPath = path.join(baseDir, item);
-          await fs.rename(sourcePath, destPath);
+    for (const item of items) {
+      const itemPath = path.join(baseDir, item);
+      try {
+        const stat = await fs.stat(itemPath);
+        if (stat.isDirectory()) {
+          const binPath = path.join(itemPath, 'bin');
+          try {
+            await fs.access(binPath);
+            jdkRootDir = itemPath;
+            logger.info('Found JDK root candidate', { jdkRootDir });
+            break;
+          } catch {
+            logger.debug('Directory does not contain bin folder', { itemPath });
+          }
         }
-
-        await fs.rmdir(nestedDirPath);
+      } catch (e) {
+        logger.warn('Error accessing item during flattening', { itemPath, error: e });
       }
     }
+
+    if (jdkRootDir) {
+      logger.info('Flattening JDK structure', { from: jdkRootDir, to: baseDir });
+      const nestedItems = await fs.readdir(jdkRootDir);
+
+      for (const item of nestedItems) {
+        const sourcePath = path.join(jdkRootDir, item);
+        const destPath = path.join(baseDir, item);
+
+        try {
+          await fs.move(sourcePath, destPath, { overwrite: true });
+        } catch (e) {
+          logger.warn(`Failed to move ${item} from nested dir`, { error: e });
+        }
+      }
+
+      try {
+        await fs.rmdir(jdkRootDir);
+      } catch (e) {
+        logger.warn('Failed to remove JDK root dir', { error: e });
+      }
+    } else {
+      logger.warn('No nested JDK root found during flattening', { baseDir });
+    }
+
+    await this.logDirectoryStructure(baseDir); // Log AFTER flattening
   }
 
   async checkJavaInstalled(): Promise<boolean> {
@@ -182,12 +267,14 @@ export class JavaManager {
       });
 
       const jreDir = pathManager.getJreDir();
-      await fs.mkdir(jreDir, { recursive: true });
+      await fs.emptyDir(jreDir); // Ensure clean state before extraction
 
       if (fileName.endsWith('.zip')) {
         await this.extractZip(downloadPath, jreDir, onProgress || (() => { }));
+      } else if (fileName.endsWith('.tar.gz')) {
+        await this.extractTarGz(downloadPath, jreDir, onProgress || (() => { }));
       } else {
-        throw new Error('Unsupported JRE file format (only zip implemented)');
+        throw new Error('Unsupported JRE file format (only zip and tar.gz supported)');
       }
 
       await this.flattenNestedDirectory(jreDir);
@@ -195,6 +282,11 @@ export class JavaManager {
       await fs.unlink(downloadPath);
 
       const installedPath = this.getJavaExecutablePath();
+
+      // On Linux/Mac, we need to ensure the executable has +x permissions
+      if (process.platform !== 'win32') {
+        await fs.chmod(installedPath, 0o755);
+      }
 
       if (!(await this.checkJavaInstalled())) {
         throw new Error('Java installation verification failed');

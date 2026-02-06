@@ -21,7 +21,6 @@ export function VersionSelector() {
     const isBusy = status === 'launching' || status === 'running';
 
     useEffect(() => {
-        // ... (data fetching)
         const fetchData = async () => {
             try {
                 let versionsData: Version[] = [];
@@ -61,6 +60,26 @@ export function VersionSelector() {
         }
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    // Listen for game events to refresh versions (e.g. after install)
+    useEffect(() => {
+        const refreshVersions = async () => {
+            try {
+                const versionsData = await window.electronAPI.invoke(IPC_CHANNELS.GAME.GET_VERSIONS) as Version[];
+                setVersions(versionsData);
+            } catch (error) {
+                console.error('Failed to refresh versions', error);
+            }
+        };
+
+        const removeSuccessListener = window.electronAPI.on(IPC_CHANNELS.GAME.SUCCESS, refreshVersions);
+        const removeStoppedListener = window.electronAPI.on(IPC_CHANNELS.GAME.STOPPED, refreshVersions);
+
+        return () => {
+            removeSuccessListener();
+            removeStoppedListener();
+        };
     }, []);
 
     const handleSelect = async (versionId: string) => {
