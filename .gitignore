@@ -8,3 +8,4 @@ release
 .vscode
 logs
 *.log
+errornpm.txt

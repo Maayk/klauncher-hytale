@@ -9,6 +9,7 @@ import { GamePatcher } from './gamePatcher';
 import { serverPatcher } from './serverPatcher';
 import { configManager } from './configManager';
 import { DownloadService } from './downloadService';
+import { pathManager } from './pathManager';
 
 import { ZeroToOneInstaller } from './zeroToOneInstaller';
 
@@ -201,7 +202,7 @@ class GameLauncher {
     // Use channel directly (dynamic versioning)
     const channel = gameChannel || settings.gameChannel || 'latest';
     const gameDir = this.buildGameDir(hytaleRoot, channel);
-    const executablePath = path.join(gameDir, 'Client', 'HytaleClient.exe');
+    const executablePath = pathManager.getClientExecutable(gameDir);
     const userDir = path.join(hytaleRoot, 'UserData');
 
     await fs.ensureDir(userDir);
@@ -254,23 +255,21 @@ class GameLauncher {
     }
 
     try {
-      const executableExists = await fs.access(executablePath).then(() => true).catch(() => false);
+      // Why: Ensures updates are checked every launch. Previously skipped 
+      // if executable existed, which broke the auto-patching flow.
+      onProgress?.({ stage: 'patch', message: 'Verificando atualizações do jogo...', progress: 50 });
+      onStatus?.('Verificando atualizações do jogo...');
 
-      if (!executableExists) {
-        onProgress?.({ stage: 'patch', message: 'Baixando e instalando Hytale...', progress: 50 });
-        onStatus?.('Baixando e instalando Hytale...');
+      const patchProgressHandler = (stage: string, progress: number, message: string) => {
+        onProgress?.({
+          stage: 'patch',
+          message,
+          progress: 50 + (progress * 0.3),
+        });
+        onStatus?.(message);
+      };
 
-        const patchProgressHandler = (stage: string, progress: number, message: string) => {
-          onProgress?.({
-            stage: 'patch',
-            message,
-            progress: 50 + (progress * 0.3),
-          });
-          onStatus?.(message);
-        };
-
-        await gamePatcher.patchGame(gameDir, channel, patchProgressHandler);
-      }
+      await gamePatcher.patchGame(gameDir, channel, patchProgressHandler);
     } catch (error) {
       const message = `Erro ao instalar jogo: ${error instanceof Error ? error.message : String(error)}`;
       logger.error('Game installation failed', { error });

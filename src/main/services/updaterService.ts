@@ -33,8 +33,8 @@ interface RemoteConfig {
   };
 }
 
-const UPDATE_CONFIG_URL = 'https://api.battlylauncher.com/hytale/config';
-
+// Why: Unified config resolution - retrieves the same local config.json 
+// used by the rest of the application.
 let globalRemoteConfig: RemoteConfig | null = null;
 
 async function fetchRemoteConfig(): Promise<RemoteConfig> {
@@ -42,26 +42,17 @@ async function fetchRemoteConfig(): Promise<RemoteConfig> {
     return globalRemoteConfig;
   }
 
-  try {
-    logger.info('Fetching remote config', { url: UPDATE_CONFIG_URL });
-
-    const { default: axios } = await import('axios');
-    const response = await axios.get(UPDATE_CONFIG_URL);
-    globalRemoteConfig = response.data;
-
-    logger.info('Remote config fetched', {
-      launcherVersion: response.data.launcher?.version,
-      hytaleLatest: response.data.hytale?.latest?.version,
-      hytaleBeta: response.data.hytale?.beta?.version
-    });
-
-    return response.data;
-  } catch (error) {
-    logger.error('Failed to fetch remote config', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    throw error;
+  const localConfig = await loadLocalConfig();
+  if (!localConfig) {
+    throw new Error('No config.json found for launcher update checks');
   }
+
+  globalRemoteConfig = localConfig;
+  logger.info('Config loaded for update checks', {
+    launcherVersion: localConfig.launcher?.version,
+  });
+
+  return localConfig;
 }
 
 function compareVersions(v1: string, v2: string): number {

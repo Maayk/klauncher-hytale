@@ -82,10 +82,26 @@
         },
         "linux": {
             "target": [
-                "zip"
+                "zip",
+                "flatpak"
             ],
             "category": "Game",
             "icon": "build/icon.png"
+        },
+        "flatpak": {
+            "runtimeVersion": "23.08",
+            "sdk": "org.freedesktop.Sdk",
+            "runtime": "org.freedesktop.Platform",
+            "finishArgs": [
+                "--share=ipc",
+                "--share=network",
+                "--socket=x11",
+                "--socket=wayland",
+                "--socket=pulseaudio",
+                "--device=dri",
+                "--filesystem=host",
+                "--env=ALSA_CONFIG_PATH=/usr/share/alsa/alsa.conf"
+            ]
         },
         "mac": {
             "target": "dmg",

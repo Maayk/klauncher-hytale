@@ -41,6 +41,12 @@ export interface PatcherResult {
   patchType: 'none' | 'patch' | 'full';
 }
 
+// Why: Hytale binaries have fixed-size slots for domain strings.
+// Replacing with strings outside 4-16 chars causes buffer overflows/underflows.
+const MIN_DOMAIN_LENGTH = 4;
+const MAX_DOMAIN_LENGTH = 16;
+const DEFAULT_DOMAIN = 'auth.sanasol.ws';
+
 export class GamePatcher {
   private downloadService: DownloadService;
   private readonly patchConfig = {
@@ -71,6 +77,34 @@ export class GamePatcher {
     await this.applyBinaryMods(executablePath);
   }
 
+  // Why: Ensures domain fits in the binary's fixed-size string slots.
+  private getValidatedDomain(): string {
+    const domain = this.patchConfig.targetDomain;
+    if (domain.length < MIN_DOMAIN_LENGTH || domain.length > MAX_DOMAIN_LENGTH) {
+      logger.warn(`Domain "${domain}" out of range (${MIN_DOMAIN_LENGTH}-${MAX_DOMAIN_LENGTH}), using default`, { domain, default: DEFAULT_DOMAIN });
+      return DEFAULT_DOMAIN;
+    }
+    return domain;
+  }
+
+  // Why: .NET binary strings use a 4-byte LE length header + null-separated characters.
+  private stringToLengthPrefixed(str: string): Buffer {
+    const length = str.length;
+    // Format: [4-byte LE length] [char0] [0x00] [char1] [0x00] ... [charN]
+    // Total bytes = 4 (header) + length (chars) + (length - 1) (null separators)
+    const result = Buffer.alloc(4 + length + Math.max(0, length - 1));
+    result.writeUInt32LE(length, 0);
+
+    let pos = 4;
+    for (let i = 0; i < length; i++) {
+      result[pos++] = str.charCodeAt(i);
+      if (i < length - 1) {
+        result[pos++] = 0x00;
+      }
+    }
+    return result;
+  }
+
   private encodeUtf16(str: string): Buffer {
     const buf = Buffer.alloc(str.length * 2);
     for (let i = 0; i < str.length; i++) {
@@ -91,43 +125,54 @@ export class GamePatcher {
     return indices;
   }
 
-  private replaceBinaryStrings(buffer: Buffer, replacementMap: Array<{ type: 'simple' | 'smart_domain'; oldVal: string; newVal: string }>): { buffer: Buffer; count: number } {
-    let totalReplacements = 0;
-    let modifiedBuffer = Buffer.from(buffer);
+  // Why: Primary patch method. .NET length-prefixing makes trailing bytes safely ignorable
+  // if the new string is shorter or equal in length.
+  private replaceLengthPrefixed(buffer: Buffer, oldStr: string, newStr: string): { buffer: Buffer; count: number } {
+    const oldBytes = this.stringToLengthPrefixed(oldStr);
+    const newBytes = this.stringToLengthPrefixed(newStr);
+    const result = Buffer.from(buffer);
+    let count = 0;
 
-    for (const { type, oldVal, newVal } of replacementMap) {
-      if (type === 'simple') {
-        const oldBytes = this.encodeUtf16(oldVal);
-        const newBytes = this.encodeUtf16(newVal);
-        const matches = this.getPatternIndices(modifiedBuffer, oldBytes);
+    if (newBytes.length > oldBytes.length) {
+      logger.warn(`LP replacement skipped: new pattern (${newBytes.length}) longer than old (${oldBytes.length})`, { oldStr, newStr });
+      return { buffer: result, count: 0 };
+    }
 
-        for (const pos of matches) {
-          newBytes.copy(modifiedBuffer, pos);
-          totalReplacements++;
-        }
-      } else if (type === 'smart_domain') {
-        const oldBytesStub = this.encodeUtf16(oldVal.slice(0, -1));
-        const newBytesStub = this.encodeUtf16(newVal.slice(0, -1));
+    const positions = this.getPatternIndices(result, oldBytes);
+    for (const pos of positions) {
+      newBytes.copy(result, pos);
+      count++;
+      logger.debug(`Patched LP occurrence at offset 0x${pos.toString(16)}`);
+    }
 
-        const oldEndByte = oldVal.charCodeAt(oldVal.length - 1);
-        const newEndByte = newVal.charCodeAt(newVal.length - 1);
+    return { buffer: result, count };
+  }
 
-        const matches = this.getPatternIndices(modifiedBuffer, oldBytesStub);
+  // Why: Fallback for older binaries using raw UTF-16LE. Verifies the last char byte
+  // to minimize false positive matches in executable code.
+  private replaceUtf16LESmart(buffer: Buffer, oldStr: string, newStr: string): { buffer: Buffer; count: number } {
+    const result = Buffer.from(buffer);
+    let count = 0;
 
-        for (const pos of matches) {
-          const endBytePos = pos + oldBytesStub.length;
-          if (endBytePos + 1 > modifiedBuffer.length) continue;
+    const oldBytesStub = this.encodeUtf16(oldStr.slice(0, -1));
+    const newBytesStub = this.encodeUtf16(newStr.slice(0, -1));
+    const oldEndByte = oldStr.charCodeAt(oldStr.length - 1);
+    const newEndByte = newStr.charCodeAt(newStr.length - 1);
 
-          if (modifiedBuffer[endBytePos] === oldEndByte) {
-            newBytesStub.copy(modifiedBuffer, pos);
-            modifiedBuffer[endBytePos] = newEndByte;
-            totalReplacements++;
-          }
-        }
+    const matches = this.getPatternIndices(result, oldBytesStub);
+    for (const pos of matches) {
+      const endBytePos = pos + oldBytesStub.length;
+      if (endBytePos + 1 > result.length) continue;
+
+      if (result[endBytePos] === oldEndByte) {
+        newBytesStub.copy(result, pos);
+        result[endBytePos] = newEndByte;
+        count++;
+        logger.debug(`Patched UTF-16LE occurrence at offset 0x${pos.toString(16)}`);
       }
     }
 
-    return { buffer: modifiedBuffer, count: totalReplacements };
+    return { buffer: result, count };
   }
 
   private async ensureTools(onProgress?: (stage: string, progress: number, message: string) => void): Promise<string> {
@@ -188,42 +233,131 @@ export class GamePatcher {
   }
 
   private async applyBinaryMods(clientPath: string): Promise<void> {
+    const newDomain = this.getValidatedDomain();
     const trackingFile = clientPath + this.patchConfig.patchFlagFile;
+    const backupPath = clientPath + '.original';
 
+    // --- Check if already patched for this domain ---
     try {
       const trackingContent = await fs.readFile(trackingFile, 'utf-8');
-      if (trackingContent.includes(this.patchConfig.targetDomain)) {
-        logger.info('Binary already patched', { path: clientPath });
-        return;
+      const flagData = JSON.parse(trackingContent);
+
+      if (flagData.targetDomain === newDomain) {
+        // Why: Butler updates replace the executable, so we must verify the actual bytes
+        // to ensure the patch flag isn't stale.
+        const binaryData = await fs.readFile(clientPath);
+        const domainPattern = this.stringToLengthPrefixed(newDomain);
+        if (binaryData.includes(domainPattern)) {
+          logger.info('Binary already patched for current domain', { domain: newDomain });
+          return;
+        }
+        logger.info('Flag exists but binary not patched (was updated?), will re-patch');
+      } else {
+        logger.info(`Binary patched for "${flagData.targetDomain}", need to re-patch for "${newDomain}"`);
       }
     } catch {
       logger.debug('No patch tracking file found, will patch');
     }
 
-    logger.info('Patching client binary', { path: clientPath });
+    logger.info('=== Client Patcher ===', {
+      path: clientPath,
+      domain: newDomain,
+      domainLength: newDomain.length
+    });
 
-    await fs.copyFile(clientPath, clientPath + '.bak').catch(() => { });
+    // --- Backup logic: always keep the ORIGINAL unpatched binary ---
+    try {
+      const currentStat = await fs.stat(clientPath);
+      let needsNewBackup = true;
 
-    const rawData = await fs.readFile(clientPath);
+      try {
+        const backupStat = await fs.stat(backupPath);
+        if (currentStat.size !== backupStat.size) {
+          // Why: If size changed, Butler applied an update. Refresh the backup.
+          logger.info('Binary size changed (game updated), refreshing backup', {
+            current: currentStat.size,
+            backup: backupStat.size
+          });
+        } else {
+          needsNewBackup = false;
+          logger.debug('Backup already exists with matching size');
+        }
+      } catch {
+        // No backup exists yet
+      }
 
-    const modifications = [
-      { type: 'smart_domain' as const, oldVal: this.patchConfig.originalDomain, newVal: this.patchConfig.targetDomain },
-      { type: 'simple' as const, oldVal: this.patchConfig.oldDiscord, newVal: this.patchConfig.newDiscord }
-    ];
+      if (needsNewBackup) {
+        await fs.copyFile(clientPath, backupPath);
+        logger.info('Created backup of original binary', { backupPath });
+      }
+    } catch (e) {
+      logger.warn('Could not create backup, proceeding without', { error: e });
+    }
 
-    const { buffer: newData, count } = this.replaceBinaryStrings(rawData, modifications);
+    // --- Read the binary (prefer original backup to avoid re-patching artifacts) ---
+    let rawData: Buffer;
+    try {
+      await fs.access(backupPath);
+      rawData = await fs.readFile(backupPath);
+      logger.info('Reading from original backup for clean patching');
+    } catch {
+      rawData = await fs.readFile(clientPath);
+      logger.info('Reading current binary (no backup available)');
+    }
 
-    logger.info('Binary replacements applied', { count });
+    logger.info(`Binary size: ${(rawData.length / 1024 / 1024).toFixed(2)} MB`);
 
-    await fs.writeFile(clientPath, newData);
+    // --- Apply patches using length-prefixed format (primary method) ---
+    let patchedData: Buffer = Buffer.from(rawData) as Buffer;
+    let totalCount = 0;
+
+    // Why: We preserve subdomains as our infrastructure relies on them for routing.
+    // The domain-only replacement correctly handles sessions.hytale.com -> sessions.sanasol.ws.
+
+    // 1. Main domain (length-prefixed)
+    const domainResult = this.replaceLengthPrefixed(patchedData, this.patchConfig.originalDomain, newDomain);
+    patchedData = domainResult.buffer as Buffer;
+    totalCount += domainResult.count;
+    if (domainResult.count > 0) logger.info(`Patched ${domainResult.count} domain occurrence(s) via LP format`);
+
+    // 2. Discord URL (length-prefixed)
+    const discordLPResult = this.replaceLengthPrefixed(patchedData, this.patchConfig.oldDiscord, this.patchConfig.newDiscord);
+    patchedData = discordLPResult.buffer as Buffer;
+    totalCount += discordLPResult.count;
+    if (discordLPResult.count > 0) logger.info(`Patched ${discordLPResult.count} Discord URL(s) via LP format`);
+
+    // --- Fallback: If LP found nothing, try legacy UTF-16LE ---
+    if (totalCount === 0) {
+      logger.info('No LP matches found, trying legacy UTF-16LE format...');
+
+      const legacyDomainResult = this.replaceUtf16LESmart(rawData, this.patchConfig.originalDomain, newDomain);
+      if (legacyDomainResult.count > 0) {
+        patchedData = legacyDomainResult.buffer as Buffer;
+        totalCount += legacyDomainResult.count;
+        logger.info(`Patched ${legacyDomainResult.count} domain occurrence(s) via legacy UTF-16LE`);
+
+        // Also try Discord in UTF-16LE
+        const discordUtf16 = this.replaceUtf16LESmart(patchedData, this.patchConfig.oldDiscord, this.patchConfig.newDiscord);
+        patchedData = discordUtf16.buffer as Buffer;
+        totalCount += discordUtf16.count;
+      } else {
+        logger.warn('No occurrences found in any format — binary may already be modified or has different format');
+      }
+    }
+
+    // --- Write patched binary and flag ---
+    logger.info('Binary replacements applied', { totalCount });
+    await fs.writeFile(clientPath, patchedData);
 
     await fs.writeFile(trackingFile, JSON.stringify({
-      date: new Date().toISOString(),
-      original: this.patchConfig.originalDomain,
-      target: this.patchConfig.targetDomain
+      patchedAt: new Date().toISOString(),
+      originalDomain: this.patchConfig.originalDomain,
+      targetDomain: newDomain,
+      patchCount: totalCount,
+      patcherVersion: '2.1.0'
     }));
 
-    logger.info('Client modifications finished');
+    logger.info('=== Client Patching Complete ===');
   }
 
   private isHttpUrl(value: string | null | undefined): boolean {
@@ -400,7 +534,7 @@ export class GamePatcher {
 
       const clientDir = path.join(dir, 'Client');
       if (await fs.access(clientDir).then(() => true).catch(() => false)) {
-        const clientExe = path.join(clientDir, 'HytaleClient.exe');
+        const clientExe = pathManager.getClientExecutable(dir);
         if (await fs.access(clientExe).then(() => true).catch(() => false)) return dir;
         return dir;
       }
@@ -524,7 +658,7 @@ export class GamePatcher {
     let currentInfo = configManager.getGameVersion(channel);
 
     // Logic: "Assume Latest" for Local Installs (Sync)
-    if (installedFromLocal || (!currentInfo && await fs.access(path.join(gameDir, 'Client', 'HytaleClient.exe')).then(() => true).catch(() => false))) {
+    if (installedFromLocal || (!currentInfo && await fs.access(pathManager.getClientExecutable(gameDir)).then(() => true).catch(() => false))) {
       logger.info('Detected local installation without version record. Attempting synchronization...');
       onProgress?.('syncing', 0, 'Synchronizing version with server...');
 
@@ -553,7 +687,7 @@ export class GamePatcher {
 
     // Safety Check: If config says we have a version, but files are missing -> Force 0
     if (currentVerVal > 0) {
-      const clientExe = path.join(gameDir, 'Client', 'HytaleClient.exe');
+      const clientExe = pathManager.getClientExecutable(gameDir);
       if (!await fs.access(clientExe).then(() => true).catch(() => false)) {
         logger.warn('Version record exists but game files are missing. Forcing fresh install.', { currentVerVal });
         currentVerVal = 0;
@@ -575,6 +709,7 @@ export class GamePatcher {
       const nextPatch = await patchDiscovery.findNextPatch(channel, currentVerVal);
       if (!nextPatch) {
         logger.info('No further updates found', { currentVerVal });
+        onProgress?.('up_to_date', 100, 'Jogo atualizado!');
         break;
       }
 
@@ -652,6 +787,13 @@ export class GamePatcher {
 
     try {
       await execFileAsync(patcherBin, patchArgs, { maxBuffer: 10 * 1024 * 1024 });
+
+      // Why: Butler replaces game binaries, invalidating previous binary mods.
+      // Clear the patch flag so applyBinaryMods() re-patches the new executable.
+      const clientExe = pathManager.getClientExecutable(gameDir);
+      const flagFile = clientExe + this.patchConfig.patchFlagFile;
+      await fs.unlink(flagFile).catch(() => { });
+      logger.info('Cleared binary patch flag after butler apply');
     } finally {
       // Always cleanup the large patch file to save space
       await fs.unlink(patchPath).catch(() => { });
