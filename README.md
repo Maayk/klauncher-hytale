@@ -4,7 +4,7 @@
 
 KyamLauncher is a high-performance, security-focused launcher built to provide a seamless and secure experience for Hytale players. Engineered from the ground up using modern web technologies and strictly typed architecture, it ensures stability, observability, and modularity.
 
-![Preview do Launcher](https://i.ibb.co/fVmjDkN6/image.png)
+![Preview do Launcher](https://i.ibb.co/cShdSgMs/Preview1.png)
 
 ---
 
@@ -44,6 +44,9 @@ The codebase follows a **Service-Oriented Architecture (SOA)** to ensure scalabi
 ## Key Features
 
 ### Mod Management System
+
+![Preview do Launcher](https://i.ibb.co/XkKhjyrk/Preview2.png)
+
 - **Integrated Browser**: Discover and search for mods directly within the launcher.
 - **One-Click Install**: Seamless installation of `.jar` mods.
 - **Dependency Isolation**: Mods are managed in isolated directories to prevent conflicts.
@@ -56,7 +59,12 @@ The codebase follows a **Service-Oriented Architecture (SOA)** to ensure scalabi
 - **Structured Logging (Winston)**: All system events are logged with severity levels (`INFO`, `ERROR`, `WARN`) to local files for easier troubleshooting.
 - **Telemetry Ready**: Architecture supports hooking into analytics providers for crash reporting (opt-in).
 
+
+
 ### Advanced Configuration
+
+![Preview do Launcher](https://i.ibb.co/KpvQ2KSk/Preview3.png)
+
 - **Java Auto-Detection**: Automatically finds valid Java installations.
 - **Hardware Optimization**: Configurable RAM allocation and GPU preference selection.
 - **Integrated News Feed**: Stay updated with the latest Hytale news directly from the home screen.
